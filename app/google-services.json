@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "497341363260",
+    "project_id": "musica-cab14",
+    "storage_bucket": "musica-cab14.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:497341363260:android:289bfd2008f4178a1e3f39",
+        "android_client_info": {
+          "package_name": "com.example.betfriends_mobilapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "497341363260-2nujqlf9bo1qgd2oepar9r1funv1hdu9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDknzDiBkmPJ9uYnF0Xix2DJYwCzUTk2yc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "497341363260-2nujqlf9bo1qgd2oepar9r1funv1hdu9.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "497341363260-rq57b0laq7o8d7lpa1n12e3nadgt2s2l.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.fireCrud5a25"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
