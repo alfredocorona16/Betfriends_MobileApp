@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BetFriends_mobilapp"
+rootProject.name = "BetFriends"
 include(":app")
