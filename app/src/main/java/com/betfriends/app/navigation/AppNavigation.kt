@@ -3,7 +3,6 @@ package com.betfriends.app.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -13,25 +12,21 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.betfriends.app.data.auth.FirebaseAuthRepository
-import com.betfriends.app.domain.model.Bet
+import com.betfriends.app.data.bet.FirebaseBetRepository
 import com.betfriends.app.ui.auth.AuthViewModel
 import com.betfriends.app.ui.auth.AuthViewModelFactory
 import com.betfriends.app.ui.auth.LoginScreen
 import com.betfriends.app.ui.auth.RegisterScreen
 import com.betfriends.app.ui.auth.SplashScreen
+import com.betfriends.app.ui.bets.BetsViewModel
+import com.betfriends.app.ui.bets.BetsViewModelFactory
 import com.betfriends.app.ui.bets.MyBetsScreen
 import com.betfriends.app.ui.createbet.CreateBetScreen
 import com.betfriends.app.ui.home.HomeScreen
 
 @Composable
 fun BetFriendsApp() {
-    val backStack = rememberNavBackStack(
-        Splash
-    )
-
-    val bets = remember {
-        mutableStateListOf<Bet>()
-    }
+    val backStack = rememberNavBackStack(Splash)
 
     var splashFinished by rememberSaveable {
         mutableStateOf(false)
@@ -40,46 +35,53 @@ fun BetFriendsApp() {
     val authRepository = remember {
         FirebaseAuthRepository()
     }
-
-    val authViewModelFactory = remember(
-        authRepository
-    ) {
-        AuthViewModelFactory(
-            authRepository = authRepository
-        )
+    val authViewModelFactory = remember(authRepository) {
+        AuthViewModelFactory(authRepository = authRepository)
     }
-
     val authViewModel: AuthViewModel = viewModel(
         factory = authViewModelFactory
     )
 
-    val authState = authViewModel.uiState
-    val currentRoute = backStack.lastOrNull()
+    val betRepository = remember {
+        FirebaseBetRepository()
+    }
+    val betsViewModelFactory = remember(betRepository) {
+        BetsViewModelFactory(repository = betRepository)
+    }
+    val betsViewModel: BetsViewModel = viewModel(
+        factory = betsViewModelFactory
+    )
 
-    /*
-     * Control central de sesión:
-     *
-     * 1. Splash espera a que Firebase revise la sesión.
-     * 2. Si hay usuario, abre Home.
-     * 3. Si no hay usuario, abre Login.
-     * 4. Después de login o registro, elimina las
-     *    pantallas de autenticación del historial.
-     * 5. Después de cerrar sesión, regresa a Login.
-     */
+    val authState = authViewModel.uiState
+    val betsState = betsViewModel.uiState
+    val currentRoute = backStack.lastOrNull()
+    val authenticatedUser = authState.user
+
+    val displayedUser = authenticatedUser?.let { user ->
+        user.copy(
+            saldo = betsState.currentBalance ?: user.saldo
+        )
+    }
+
+    LaunchedEffect(authenticatedUser?.uid) {
+        if (authenticatedUser != null) {
+            betsViewModel.start(authenticatedUser)
+        } else {
+            betsViewModel.stop()
+        }
+    }
+
     LaunchedEffect(
         splashFinished,
         authState.isLoading,
-        authState.user?.uid,
+        authenticatedUser?.uid,
         currentRoute
     ) {
-        if (
-            !splashFinished ||
-            authState.isLoading
-        ) {
+        if (!splashFinished || authState.isLoading) {
             return@LaunchedEffect
         }
 
-        if (authState.user != null) {
+        if (authenticatedUser != null) {
             val isAuthenticationRoute =
                 currentRoute == Splash ||
                         currentRoute == Login ||
@@ -109,7 +111,6 @@ fun BetFriendsApp() {
             }
         },
         entryProvider = entryProvider {
-
             entry<Splash> {
                 SplashScreen(
                     onFinished = {
@@ -137,11 +138,7 @@ fun BetFriendsApp() {
             entry<Register> {
                 RegisterScreen(
                     uiState = authState,
-                    onRegister = {
-                            nombre,
-                            correo,
-                            password ->
-
+                    onRegister = { nombre, correo, password ->
                         authViewModel.register(
                             nombre = nombre,
                             correo = correo,
@@ -156,16 +153,17 @@ fun BetFriendsApp() {
             }
 
             entry<Home> {
-                val authenticatedUser = authState.user
-
-                if (authenticatedUser != null) {
+                if (displayedUser != null) {
                     HomeScreen(
-                        user = authenticatedUser,
-                        bets = bets,
+                        user = displayedUser,
+                        bets = betsState.bets,
                         onCreateBet = {
+                            betsViewModel.clearMessage()
+                            betsViewModel.clearUserSearch()
                             backStack.add(CreateBet)
                         },
                         onViewBets = {
+                            betsViewModel.clearMessage()
                             backStack.add(MyBets)
                         },
                         onLogout = {
@@ -176,33 +174,55 @@ fun BetFriendsApp() {
             }
 
             entry<CreateBet> {
-                CreateBetScreen(
-                    onBetCreated = { newBet ->
-                        bets.add(newBet)
-                        backStack.removeLastOrNull()
-                    },
-                    onBack = {
-                        backStack.removeLastOrNull()
-                    }
-                )
+                if (displayedUser != null) {
+                    CreateBetScreen(
+                        currentUser = displayedUser,
+                        searchResult = betsState.searchResult,
+                        isSearchingUser =
+                            betsState.isSearchingUser,
+                        isCreatingBet = betsState.isCreatingBet,
+                        externalMessage = betsState.message,
+                        onSearchUser = betsViewModel::searchUser,
+                        onClearUserSearch =
+                            betsViewModel::clearUserSearch,
+                        onBetCreated = { newBet ->
+                            betsViewModel.createBet(
+                                bet = newBet,
+                                creator = displayedUser,
+                                onSuccess = {
+                                    backStack.removeLastOrNull()
+                                }
+                            )
+                        },
+                        onBack = {
+                            betsViewModel.clearUserSearch()
+                            betsViewModel.clearMessage()
+                            backStack.removeLastOrNull()
+                        }
+                    )
+                }
             }
 
             entry<MyBets> {
-                MyBetsScreen(
-                    bets = bets,
-                    onBetUpdated = { updatedBet ->
-                        val index = bets.indexOfFirst { bet ->
-                            bet.id == updatedBet.id
+                if (displayedUser != null) {
+                    MyBetsScreen(
+                        currentUserId = displayedUser.uid,
+                        bets = betsState.bets,
+                        invitations = betsState.invitations,
+                        processingInvitationId =
+                            betsState.processingInvitationId,
+                        message = betsState.message,
+                        onAcceptInvitation =
+                            betsViewModel::acceptInvitation,
+                        onDeclineInvitation =
+                            betsViewModel::declineInvitation,
+                        onBetUpdated = betsViewModel::updateBet,
+                        onBack = {
+                            betsViewModel.clearMessage()
+                            backStack.removeLastOrNull()
                         }
-
-                        if (index >= 0) {
-                            bets[index] = updatedBet
-                        }
-                    },
-                    onBack = {
-                        backStack.removeLastOrNull()
-                    }
-                )
+                    )
+                }
             }
         }
     )

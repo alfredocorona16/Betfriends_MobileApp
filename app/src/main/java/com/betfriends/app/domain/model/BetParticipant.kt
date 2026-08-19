@@ -4,5 +4,14 @@ import java.util.UUID
 
 data class BetParticipant(
     val id: String = UUID.randomUUID().toString(),
-    val name: String
+    val name: String,
+    val email: String = "",
+    val invitationStatus: ParticipantInvitationStatus =
+        ParticipantInvitationStatus.ACCEPTED
 )
+
+enum class ParticipantInvitationStatus {
+    PENDING,
+    ACCEPTED,
+    DECLINED
+}

@@ -10,6 +10,9 @@ data class Bet(
     val startsAt: LocalDateTime,
     val endsAt: LocalDateTime,
 
+    val creatorId: String = "",
+    val creatorName: String = "",
+
     val locationName: String? = null,
     val radiusMeters: Int? = null,
     val targetLatitude: Double? = null,
@@ -18,13 +21,30 @@ data class Bet(
 
     val participants: List<BetParticipant> = emptyList(),
     val stakePerParticipant: Double = 0.0,
+    val confirmedPot: Double = 0.0,
 
     val status: BetStatus = BetStatus.WAITING,
     val checkIns: List<BetCheckIn> = emptyList(),
     val winnerName: String? = null
 ) {
+    val acceptedParticipants: List<BetParticipant>
+        get() = participants.filter {
+            it.invitationStatus ==
+                    ParticipantInvitationStatus.ACCEPTED
+        }
+
+    val expectedPrize: Double
+        get() = stakePerParticipant * participants.count {
+            it.invitationStatus !=
+                    ParticipantInvitationStatus.DECLINED
+        }
+
     val totalPrize: Double
-        get() = stakePerParticipant * participants.size
+        get() = if (confirmedPot > 0.0) {
+            confirmedPot
+        } else {
+            stakePerParticipant * acceptedParticipants.size
+        }
 }
 
 enum class BetType {
