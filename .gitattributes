@@ -1,0 +1,12 @@
+# Normalización de finales de línea
+* text=auto
+
+# Scripts para Linux/macOS
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Scripts para Windows
+*.bat text eol=crlf
+
+# Archivos binarios
+*.jar binary
