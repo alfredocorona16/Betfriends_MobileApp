@@ -22,6 +22,7 @@ import com.betfriends.app.ui.bets.BetsViewModel
 import com.betfriends.app.ui.bets.BetsViewModelFactory
 import com.betfriends.app.ui.bets.MyBetsScreen
 import com.betfriends.app.ui.createbet.CreateBetScreen
+import com.betfriends.app.ui.profile.EditProfileScreen
 import com.betfriends.app.ui.home.HomeScreen
 
 @Composable
@@ -166,8 +167,34 @@ fun BetFriendsApp() {
                             betsViewModel.clearMessage()
                             backStack.add(MyBets)
                         },
+                        onEditProfile = {
+                            authViewModel.clearError()
+                            backStack.add(EditProfile)
+                        },
                         onLogout = {
                             authViewModel.logout()
+                        }
+                    )
+                }
+            }
+
+            entry<EditProfile> {
+                if (authenticatedUser != null) {
+                    EditProfileScreen(
+                        user = authenticatedUser,
+                        isSaving = authState.isSavingProfile,
+                        errorMessage = authState.errorMessage,
+                        onSave = { nombre ->
+                            authViewModel.updateName(
+                                nombre = nombre,
+                                onSuccess = {
+                                    backStack.removeLastOrNull()
+                                }
+                            )
+                        },
+                        onBack = {
+                            authViewModel.clearError()
+                            backStack.removeLastOrNull()
                         }
                     )
                 }
