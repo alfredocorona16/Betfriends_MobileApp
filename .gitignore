@@ -22,3 +22,6 @@ replay_pid*.log
 # Archivos del sistema operativo
 .DS_Store
 Thumbs.db
+
+# Configuración local de VS Code
+.vscode/
