@@ -144,6 +144,45 @@ class FirebaseAuthRepository(
         )
     }
 
+    override fun updateProfileName(
+        nombre: String,
+        onResult: (Result<UserProfile>) -> Unit
+    ) {
+        val firebaseUser = auth.currentUser
+
+        if (firebaseUser == null) {
+            onResult(
+                Result.failure(
+                    IllegalStateException(
+                        "No existe una sesión activa."
+                    )
+                )
+            )
+            return
+        }
+
+        firestore
+            .collection(USERS_COLLECTION)
+            .document(firebaseUser.uid)
+            .update(FIELD_NAME, nombre)
+            .addOnSuccessListener {
+                loadUserProfile(
+                    firebaseUser = firebaseUser,
+                    onResult = onResult
+                )
+            }
+            .addOnFailureListener {
+                onResult(
+                    Result.failure(
+                        IllegalStateException(
+                            "No fue posible guardar los cambios. " +
+                                    "Revisa tu conexión e inténtalo de nuevo."
+                        )
+                    )
+                )
+            }
+    }
+
     override fun logout() {
         auth.signOut()
     }

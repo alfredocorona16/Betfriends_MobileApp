@@ -114,6 +114,57 @@ class AuthViewModel(
         }
     }
 
+    fun updateName(
+        nombre: String,
+        onSuccess: () -> Unit
+    ) {
+        val normalizedName = nombre.trim()
+
+        if (normalizedName.isBlank()) {
+            showError("Escribe tu nombre.")
+            return
+        }
+
+        if (normalizedName.length > MAXIMUM_NAME_LENGTH) {
+            showError(
+                "El nombre no puede tener más de " +
+                        "$MAXIMUM_NAME_LENGTH caracteres."
+            )
+            return
+        }
+
+        if (normalizedName == uiState.user?.nombre) {
+            onSuccess()
+            return
+        }
+
+        uiState = uiState.copy(
+            isSavingProfile = true,
+            errorMessage = null
+        )
+
+        authRepository.updateProfileName(
+            nombre = normalizedName
+        ) { result ->
+            result.fold(
+                onSuccess = { updatedProfile ->
+                    uiState = uiState.copy(
+                        user = updatedProfile,
+                        isSavingProfile = false
+                    )
+                    onSuccess()
+                },
+                onFailure = { error ->
+                    uiState = uiState.copy(
+                        isSavingProfile = false,
+                        errorMessage = error.message
+                            ?: "No fue posible guardar los cambios."
+                    )
+                }
+            )
+        }
+    }
+
     fun logout() {
         authRepository.logout()
         uiState = AuthUiState()
@@ -170,6 +221,7 @@ class AuthViewModel(
 
     private companion object {
         const val MINIMUM_PASSWORD_LENGTH = 6
+        const val MAXIMUM_NAME_LENGTH = 40
     }
 }
 
