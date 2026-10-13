@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
@@ -58,6 +59,7 @@ fun HomeScreen(
     bets: List<Bet>,
     onCreateBet: () -> Unit,
     onViewBets: () -> Unit,
+    onEditProfile: () -> Unit,
     onLogout: () -> Unit
 ) {
     Column(
@@ -73,6 +75,7 @@ fun HomeScreen(
     ) {
         UserHeader(
             name = user.nombre,
+            onEditProfile = onEditProfile,
             onLogout = onLogout
         )
 
@@ -117,6 +120,7 @@ fun HomeScreen(
 @Composable
 private fun UserHeader(
     name: String,
+    onEditProfile: () -> Unit,
     onLogout: () -> Unit
 ) {
     Row(
@@ -166,6 +170,23 @@ private fun UserHeader(
                         Icons.Default.Notifications,
                     contentDescription =
                         "Notificaciones",
+                    tint =
+                        MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            IconButton(
+                onClick = onEditProfile,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(
+                        MaterialTheme.colorScheme.surface
+                    )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription =
+                        "Editar perfil",
                     tint =
                         MaterialTheme.colorScheme.onSurface
                 )
@@ -515,6 +536,7 @@ private fun HomeScreenPreview() {
             ),
             onCreateBet = {},
             onViewBets = {},
+            onEditProfile = {},
             onLogout = {}
         )
     }

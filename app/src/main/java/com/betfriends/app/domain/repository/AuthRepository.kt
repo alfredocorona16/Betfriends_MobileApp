@@ -23,5 +23,10 @@ interface AuthRepository {
         onResult: (Result<UserProfile>) -> Unit
     )
 
+    fun updateProfileName(
+        nombre: String,
+        onResult: (Result<UserProfile>) -> Unit
+    )
+
     fun logout()
 }
