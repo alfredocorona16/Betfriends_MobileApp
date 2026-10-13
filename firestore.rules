@@ -1,0 +1,59 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn()
+        && request.auth.uid == userId;
+    }
+
+    // Perfiles privados y puntos
+    match /usuarios/{userId} {
+      allow read: if isOwner(userId);
+
+      // Los cambios de saldo y la creación del
+      // perfil requieren reglas más específicas.
+      allow create, update, delete: if false;
+    }
+
+    // Búsqueda de perfiles públicos
+    match /perfilesPublicos/{userId} {
+      allow read: if signedIn();
+
+      // Evitar suplantaciones y cambios arbitrarios.
+      allow create, update, delete: if false;
+    }
+
+    // Apuestas
+    match /apuestas/{betId} {
+      allow read: if signedIn()
+        && request.auth.uid in resource.data.participantIds;
+
+      // Las operaciones sobre apuestas y botes
+      // requieren validación de integridad.
+      allow create, update, delete: if false;
+    }
+
+    // Invitaciones
+    match /invitaciones/{invitationId} {
+      allow read: if signedIn()
+        && (
+          resource.data.inviterId == request.auth.uid
+          || resource.data.inviteeId == request.auth.uid
+        );
+
+      allow create, update, delete: if false;
+    }
+
+    // Cualquier otra ruta queda bloqueada.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
