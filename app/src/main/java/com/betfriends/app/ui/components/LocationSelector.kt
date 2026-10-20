@@ -99,7 +99,7 @@ fun LocationSelector(
 
                 coarseLocationGranted -> {
                     message =
-                        "BetFriends necesita ubicación precisa " +
+                        "Challenge Friends necesita ubicación precisa " +
                                 "para validar una apuesta. " +
                                 "Concede la opción «Precisa»."
                 }

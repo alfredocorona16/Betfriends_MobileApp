@@ -63,7 +63,7 @@ fun SplashScreen(
                 )
             ) {
                 Text(
-                    text = "Bet",
+                    text = "Challenge",
                     color =
                         MaterialTheme.colorScheme.onBackground,
                     style =

@@ -206,7 +206,7 @@ fun CreateBetScreen(
             )
 
             Text(
-                text = "Participantes de BetFriends",
+                text = "Participantes de Challenge Friends",
                 style = MaterialTheme.typography.titleMedium
             )
 
@@ -527,7 +527,7 @@ private fun validateAndCreateBet(
         "La fecha límite debe ser posterior al inicio."
     }
     require(participants.size >= 2) {
-        "Invita al menos a otro usuario de BetFriends."
+        "Invita al menos a otro usuario de Challenge Friends.."
     }
     require(participants.size <= 10) {
         "Puedes agregar un máximo de 10 participantes."
