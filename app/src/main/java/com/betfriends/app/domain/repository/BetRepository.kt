@@ -15,9 +15,9 @@ interface BetRepository {
         onError: (String) -> Unit
     )
 
-    fun observeBalance(
+    fun observePoints(
         userId: String,
-        onChanged: (Double) -> Unit,
+        onChanged: (Int) -> Unit,
         onError: (String) -> Unit
     ): RepositorySubscription
 

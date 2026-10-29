@@ -4,5 +4,5 @@ data class UserProfile(
     val uid: String = "",
     val nombre: String = "",
     val correo: String = "",
-    val saldo: Double = 0.0
+    val puntos: Int = 0
 )

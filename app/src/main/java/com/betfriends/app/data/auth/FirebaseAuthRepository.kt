@@ -83,13 +83,13 @@ class FirebaseAuthRepository(
                 uid = firebaseUser.uid,
                 nombre = nombre,
                 correo = correo,
-                saldo = INITIAL_BALANCE
+                puntos = INITIAL_POINTS
             )
 
             val userData = hashMapOf<String, Any>(
                 FIELD_NAME to userProfile.nombre,
                 FIELD_EMAIL to userProfile.correo,
-                FIELD_BALANCE to userProfile.saldo,
+                FIELD_POINTS to userProfile.puntos,
                 FIELD_CREATED_AT to FieldValue.serverTimestamp()
             )
 
@@ -210,9 +210,9 @@ class FirebaseAuthRepository(
                     return@addOnSuccessListener
                 }
 
-                val balance = (
-                        document.get(FIELD_BALANCE) as? Number
-                        )?.toDouble() ?: 0.0
+                val points = (
+                        document.get(FIELD_POINTS) as? Number
+                        )?.toInt() ?: 0
 
                 val userProfile = UserProfile(
                     uid = firebaseUser.uid,
@@ -220,7 +220,7 @@ class FirebaseAuthRepository(
                         ?: "Usuario",
                     correo = document.getString(FIELD_EMAIL)
                         ?: firebaseUser.email.orEmpty(),
-                    saldo = balance
+                    puntos = points
                 )
 
                 onResult(
@@ -274,9 +274,9 @@ class FirebaseAuthRepository(
 
         const val FIELD_NAME = "nombre"
         const val FIELD_EMAIL = "correo"
-        const val FIELD_BALANCE = "saldo"
+        const val FIELD_POINTS = "puntos"
         const val FIELD_CREATED_AT = "fechaCreacion"
 
-        const val INITIAL_BALANCE = 1000.0
+        const val INITIAL_POINTS = 0
     }
 }
