@@ -7,7 +7,7 @@ import com.betfriends.app.domain.model.PublicUserProfile
 data class BetsUiState(
     val bets: List<Bet> = emptyList(),
     val invitations: List<BetInvitation> = emptyList(),
-    val currentBalance: Double? = null,
+    val currentPoints: Int? = null,
     val searchResult: PublicUserProfile? = null,
     val isSearchingUser: Boolean = false,
     val isCreatingBet: Boolean = false,

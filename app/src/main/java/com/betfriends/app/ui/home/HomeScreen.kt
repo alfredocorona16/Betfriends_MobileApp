@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -49,9 +48,7 @@ import com.betfriends.app.domain.model.BetStatus
 import com.betfriends.app.domain.model.BetType
 import com.betfriends.app.domain.model.UserProfile
 import com.betfriends.app.ui.theme.BetFriendsTheme
-import java.text.NumberFormat
 import java.time.LocalDateTime
-import java.util.Locale
 
 @Composable
 fun HomeScreen(
@@ -83,8 +80,8 @@ fun HomeScreen(
             modifier = Modifier.height(24.dp)
         )
 
-        BalanceCard(
-            balance = user.saldo
+        PointsCard(
+            points = user.puntos
         )
 
         Spacer(
@@ -213,17 +210,9 @@ private fun UserHeader(
 }
 
 @Composable
-private fun BalanceCard(
-    balance: Double
+private fun PointsCard(
+    points: Int
 ) {
-    val formattedBalance = remember(balance) {
-        NumberFormat
-            .getCurrencyInstance(
-                Locale("es", "MX")
-            )
-            .format(balance)
-    }
-
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -239,7 +228,7 @@ private fun BalanceCard(
             modifier = Modifier.padding(24.dp)
         ) {
             Text(
-                text = "Saldo Disponible",
+                text = "Mis puntos",
                 color = MaterialTheme
                     .colorScheme
                     .onPrimary
@@ -252,7 +241,7 @@ private fun BalanceCard(
             )
 
             Text(
-                text = formattedBalance,
+                text = "$points pts",
                 color =
                     MaterialTheme.colorScheme.onPrimary,
                 fontSize = 36.sp,
@@ -278,22 +267,6 @@ private fun QuickActions(
             label = "Apuesta",
             enabled = true,
             onClick = onCreateBet
-        )
-
-        QuickActionButton(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Default.Add,
-            label = "Recargar",
-            enabled = false,
-            onClick = {}
-        )
-
-        QuickActionButton(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Default.AttachMoney,
-            label = "Retirar",
-            enabled = false,
-            onClick = {}
         )
 
         QuickActionButton(
@@ -506,7 +479,7 @@ private fun HomeScreenPreview() {
                 uid = "1",
                 nombre = "Alfredo",
                 correo = "alfredo@example.com",
-                saldo = 1000.0
+                puntos = 120
             ),
             bets = listOf(
                 Bet(

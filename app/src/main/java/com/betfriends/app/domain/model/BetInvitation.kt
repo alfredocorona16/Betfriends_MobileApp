@@ -8,7 +8,6 @@ data class BetInvitation(
     val inviterName: String,
     val inviteeId: String,
     val inviteeName: String,
-    val stakeAmount: Double,
     val status: InvitationStatus = InvitationStatus.PENDING
 )
 

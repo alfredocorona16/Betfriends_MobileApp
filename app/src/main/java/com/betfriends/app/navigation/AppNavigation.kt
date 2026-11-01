@@ -60,7 +60,7 @@ fun BetFriendsApp() {
 
     val displayedUser = authenticatedUser?.let { user ->
         user.copy(
-            saldo = betsState.currentBalance ?: user.saldo
+            puntos = betsState.currentPoints ?: user.puntos
         )
     }
 
