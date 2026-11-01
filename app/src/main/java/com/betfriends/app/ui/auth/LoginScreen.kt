@@ -256,7 +256,7 @@ internal fun AuthBrandHeader() {
         horizontalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Challenge",
+            text = "Challenge ",
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold
