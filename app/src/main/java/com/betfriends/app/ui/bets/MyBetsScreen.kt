@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.betfriends.app.domain.rules.PointsRules
 import com.betfriends.app.domain.model.Bet
 import com.betfriends.app.domain.model.BetInvitation
 import com.betfriends.app.domain.model.BetStatus
@@ -31,7 +32,6 @@ import com.betfriends.app.domain.model.BetType
 import com.betfriends.app.domain.model.ParticipantInvitationStatus
 import com.betfriends.app.ui.components.BetCheckInSection
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 private val dateTimeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
@@ -172,7 +172,8 @@ private fun InvitationCard(
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
-                text = "Monto al aceptar: ${formatBetCurrency(invitation.stakeAmount)}",
+                text = "Participar da ${PointsRules.PARTICIPATION_POINTS} puntos; " +
+                        "ganar suma ${PointsRules.VICTORY_BONUS_POINTS} más.",
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.titleSmall
             )
@@ -270,17 +271,10 @@ private fun BetCard(
                 }
 
                 Text(
-                    text = "Monto por participante: ${formatBetCurrency(bet.stakePerParticipant)}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = "Bolsa confirmada: ${formatBetCurrency(bet.totalPrize)}",
+                    text = "Puntos: ${PointsRules.PARTICIPATION_POINTS} por participar, " +
+                            "+${PointsRules.VICTORY_BONUS_POINTS} por ganar",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.titleSmall
-                )
-                Text(
-                    text = "Bolsa esperada: ${formatBetCurrency(bet.expectedPrize)}",
-                    style = MaterialTheme.typography.bodySmall
                 )
             }
 
@@ -353,8 +347,4 @@ private fun BetCard(
             }
         }
     }
-}
-
-private fun formatBetCurrency(amount: Double): String {
-    return "${'$'}${String.format(Locale.US, "%.2f", amount)} MXN"
 }

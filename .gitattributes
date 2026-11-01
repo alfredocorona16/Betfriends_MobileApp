@@ -10,3 +10,11 @@ gradlew text eol=lf
 
 # Archivos binarios
 *.jar binary
+
+# Firebase
+firebase.json text eol=lf
+firestore.rules text eol=lf
+firestore.indexes.json text eol=lf
+
+# Pruebas de Firebase
+*.cjs text eol=lf

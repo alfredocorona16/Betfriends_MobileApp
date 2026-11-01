@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.betfriends.app.domain.rules.PointsRules
 import com.betfriends.app.domain.model.Bet
 import com.betfriends.app.domain.model.BetParticipant
 import com.betfriends.app.domain.model.BetStatus
@@ -44,7 +45,6 @@ import com.betfriends.app.location.DeviceLocation
 import com.betfriends.app.ui.components.DateTimeSelector
 import com.betfriends.app.ui.components.LocationSelector
 import java.time.LocalDateTime
-import java.util.Locale
 import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,7 +79,6 @@ fun CreateBetScreen(
         mutableStateOf<Float?>(null)
     }
     var participantEmail by rememberSaveable { mutableStateOf("") }
-    var stakeAmount by rememberSaveable { mutableStateOf("50") }
     var errorMessage by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -115,9 +114,6 @@ fun CreateBetScreen(
             }
         }
     }
-
-    val currentStake = stakeAmount.toDoubleOrNull() ?: 0.0
-    val expectedPrize = currentStake * participants.size
 
     Scaffold(
         topBar = {
@@ -206,7 +202,7 @@ fun CreateBetScreen(
             )
 
             Text(
-                text = "Participantes de BetFriends",
+                text = "Participantes de Challenge Friends",
                 style = MaterialTheme.typography.titleMedium
             )
 
@@ -335,39 +331,12 @@ fun CreateBetScreen(
                 }
             }
 
-            OutlinedTextField(
-                value = stakeAmount,
-                onValueChange = { newValue ->
-                    val validNumber = newValue.matches(
-                        Regex("""\d*(\.\d{0,2})?""")
-                    )
-                    if (validNumber) {
-                        stakeAmount = newValue
-                        errorMessage = null
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Monto por participante") },
-                prefix = { Text("$") },
-                suffix = { Text("MXN") },
-                supportingText = {
-                    Text("Saldo disponible: ${formatCurrency(currentUser.saldo)}")
-                },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal
-                ),
-                singleLine = true
-            )
-
             Text(
-                text = "Bolsa esperada: ${formatCurrency(expectedPrize)}",
+                text = "Al terminar la apuesta, cada participante gana " +
+                        "${PointsRules.PARTICIPATION_POINTS} puntos y " +
+                        "quien gane recibe ${PointsRules.VICTORY_BONUS_POINTS} más.",
                 color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Text(
-                text = "Al crearla se descontará tu monto. A cada invitado se le descontará al aceptar.",
-                style = MaterialTheme.typography.bodySmall
+                style = MaterialTheme.typography.bodyMedium
             )
 
             DateTimeSelector(
@@ -471,8 +440,6 @@ fun CreateBetScreen(
                             targetLongitude = targetLongitude,
                             targetAccuracyMeters = targetAccuracyMeters,
                             participants = participants.toList(),
-                            stakeAmount = stakeAmount,
-                            availableBalance = currentUser.saldo,
                             creator = currentUser
                         )
                     }.onSuccess(onBetCreated)
@@ -508,8 +475,6 @@ private fun validateAndCreateBet(
     targetLongitude: Double?,
     targetAccuracyMeters: Float?,
     participants: List<BetParticipant>,
-    stakeAmount: String,
-    availableBalance: Double,
     creator: UserProfile
 ): Bet {
     require(title.isNotBlank()) {
@@ -527,21 +492,10 @@ private fun validateAndCreateBet(
         "La fecha límite debe ser posterior al inicio."
     }
     require(participants.size >= 2) {
-        "Invita al menos a otro usuario de BetFriends."
+        "Invita al menos a otro usuario de Challenge Friends."
     }
     require(participants.size <= 10) {
         "Puedes agregar un máximo de 10 participantes."
-    }
-
-    val validStakeAmount = stakeAmount.toDoubleOrNull()
-    require(validStakeAmount != null && validStakeAmount > 0.0) {
-        "El monto por participante debe ser mayor a cero."
-    }
-    require(validStakeAmount <= 100_000.0) {
-        "El monto máximo permitido es de $100,000 MXN."
-    }
-    require(availableBalance >= validStakeAmount) {
-        "Tu saldo es insuficiente para crear esta apuesta."
     }
 
     var validLocationName: String? = null
@@ -599,12 +553,6 @@ private fun validateAndCreateBet(
         targetLongitude = validTargetLongitude,
         targetAccuracyMeters = validTargetAccuracyMeters,
         participants = participants,
-        stakePerParticipant = validStakeAmount,
-        confirmedPot = validStakeAmount,
         status = BetStatus.WAITING
     )
-}
-
-private fun formatCurrency(amount: Double): String {
-    return "${'$'}${String.format(Locale.US, "%.2f", amount)} MXN"
 }

@@ -174,7 +174,7 @@ private fun EditProfileScreenPreview() {
                 uid = "1",
                 nombre = "Alfredo",
                 correo = "alfredo@example.com",
-                saldo = 1000.0
+                puntos = 120
             ),
             isSaving = false,
             errorMessage = null,

@@ -1,0 +1,29 @@
+{
+  "name": "betfriends_mobileapp_bug01",
+  "version": "1.0.0",
+  "description": "BetFriends es una aplicación Android para crear retos privados entre amigos, invitar participantes y determinar resultados mediante tiempo o ubicación.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:rules": "node --test tests/firestore.rules.test.cjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alfredocorona16/Betfriends_MobileApp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/alfredocorona16/Betfriends_MobileApp/issues"
+  },
+  "homepage": "https://github.com/alfredocorona16/Betfriends_MobileApp#readme",
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase": "^13.0.0"
+  }
+}

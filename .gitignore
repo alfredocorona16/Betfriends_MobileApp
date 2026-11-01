@@ -25,3 +25,13 @@ Thumbs.db
 
 # Configuración local de VS Code
 .vscode/
+
+# Firebase local
+.firebase/
+.firebaserc
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Dependencias Node.js
+node_modules/
