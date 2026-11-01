@@ -20,30 +20,16 @@ data class Bet(
     val targetAccuracyMeters: Float? = null,
 
     val participants: List<BetParticipant> = emptyList(),
-    val stakePerParticipant: Double = 0.0,
-    val confirmedPot: Double = 0.0,
 
     val status: BetStatus = BetStatus.WAITING,
     val checkIns: List<BetCheckIn> = emptyList(),
-    val winnerName: String? = null
+    val winnerName: String? = null,
+    val pointsProcessed: Boolean = false
 ) {
     val acceptedParticipants: List<BetParticipant>
         get() = participants.filter {
             it.invitationStatus ==
                     ParticipantInvitationStatus.ACCEPTED
-        }
-
-    val expectedPrize: Double
-        get() = stakePerParticipant * participants.count {
-            it.invitationStatus !=
-                    ParticipantInvitationStatus.DECLINED
-        }
-
-    val totalPrize: Double
-        get() = if (confirmedPot > 0.0) {
-            confirmedPot
-        } else {
-            stakePerParticipant * acceptedParticipants.size
         }
 }
 

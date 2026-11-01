@@ -4,24 +4,23 @@ import com.betfriends.app.domain.model.Bet
 import com.betfriends.app.domain.model.BetInvitation
 import com.betfriends.app.domain.model.BetParticipant
 import com.betfriends.app.domain.model.BetStatus
-import com.betfriends.app.domain.model.BetType
 import com.betfriends.app.domain.model.InvitationStatus
 import com.betfriends.app.domain.model.ParticipantInvitationStatus
 import com.betfriends.app.domain.model.PublicUserProfile
 import com.betfriends.app.domain.model.UserProfile
 import com.betfriends.app.domain.repository.BetRepository
 import com.betfriends.app.domain.repository.RepositorySubscription
+import com.betfriends.app.domain.rules.PointsRules
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
 import java.util.Locale
 
 class FirebaseBetRepository(
     private val firestore: FirebaseFirestore =
-        FirebaseFirestore.getInstance()
+        FirebaseFirestore.getInstance(),
+    private val adapter: BetDocumentAdapter = BetDocumentAdapter()
 ) : BetRepository {
 
     override fun ensurePublicProfile(
@@ -47,9 +46,9 @@ class FirebaseBetRepository(
             }
     }
 
-    override fun observeBalance(
+    override fun observePoints(
         userId: String,
-        onChanged: (Double) -> Unit,
+        onChanged: (Int) -> Unit,
         onError: (String) -> Unit
     ): RepositorySubscription {
         val registration = firestore.collection(USERS_COLLECTION)
@@ -58,17 +57,16 @@ class FirebaseBetRepository(
                 if (exception != null) {
                     onError(
                         exception.message
-                            ?: "No se pudo actualizar el saldo."
+                            ?: "No se pudieron actualizar los puntos."
                     )
                     return@addSnapshotListener
                 }
 
-                val balance =
-                    (snapshot?.get("saldo") as? Number)?.toDouble()
+                val points =
+                    (snapshot?.get(FIELD_POINTS) as? Number)?.toInt()
+                        ?: 0
 
-                if (balance != null) {
-                    onChanged(balance)
-                }
+                onChanged(points)
             }
 
         return RepositorySubscription {
@@ -95,7 +93,7 @@ class FirebaseBetRepository(
                 val bets = snapshot
                     ?.documents
                     .orEmpty()
-                    .mapNotNull(::documentToBet)
+                    .mapNotNull(adapter::toBet)
                     .sortedByDescending { it.startsAt }
 
                 onChanged(bets)
@@ -126,7 +124,7 @@ class FirebaseBetRepository(
                 val invitations = snapshot
                     ?.documents
                     .orEmpty()
-                    .mapNotNull(::documentToInvitation)
+                    .mapNotNull(adapter::toInvitation)
                     .filter {
                         it.status == InvitationStatus.PENDING
                     }
@@ -217,40 +215,16 @@ class FirebaseBetRepository(
         val preparedBet = bet.copy(
             creatorId = creator.uid,
             creatorName = creator.nombre,
-            participants = participants,
-            confirmedPot = bet.stakePerParticipant
+            participants = participants
         )
-
-        val userReference = firestore.collection(USERS_COLLECTION)
-            .document(creator.uid)
 
         val betReference = firestore.collection(BETS_COLLECTION)
             .document(preparedBet.id)
 
         firestore.runTransaction { transaction ->
-            val userSnapshot = transaction.get(userReference)
-
-            if (!userSnapshot.exists()) {
-                error("No se encontró el perfil del creador.")
-            }
-
-            val currentBalance =
-                (userSnapshot.get("saldo") as? Number)?.toDouble()
-                    ?: 0.0
-
-            if (currentBalance < preparedBet.stakePerParticipant) {
-                error("Saldo insuficiente para crear la apuesta.")
-            }
-
-            transaction.update(
-                userReference,
-                "saldo",
-                currentBalance - preparedBet.stakePerParticipant
-            )
-
             transaction.set(
                 betReference,
-                betToMap(preparedBet)
+                adapter.toDocument(preparedBet)
             )
 
             invitedParticipants.forEach { participant ->
@@ -271,8 +245,6 @@ class FirebaseBetRepository(
                         "inviterName" to creator.nombre,
                         "inviteeId" to participant.id,
                         "inviteeName" to participant.name,
-                        "stakeAmount" to
-                                preparedBet.stakePerParticipant,
                         "status" to InvitationStatus.PENDING.name,
                         "createdAtMillis" to
                                 System.currentTimeMillis(),
@@ -309,14 +281,10 @@ class FirebaseBetRepository(
         val betReference = firestore.collection(BETS_COLLECTION)
             .document(invitation.betId)
 
-        val userReference = firestore.collection(USERS_COLLECTION)
-            .document(currentUserId)
-
         firestore.runTransaction { transaction ->
             val invitationSnapshot =
                 transaction.get(invitationReference)
             val betSnapshot = transaction.get(betReference)
-            val userSnapshot = transaction.get(userReference)
 
             if (!invitationSnapshot.exists()) {
                 error("La invitación ya no existe.")
@@ -340,19 +308,6 @@ class FirebaseBetRepository(
                 error("La apuesta ya no existe.")
             }
 
-            val stake =
-                (invitationSnapshot.get("stakeAmount") as? Number)
-                    ?.toDouble()
-                    ?: error("La invitación no tiene un monto válido.")
-
-            val currentBalance =
-                (userSnapshot.get("saldo") as? Number)?.toDouble()
-                    ?: 0.0
-
-            if (currentBalance < stake) {
-                error("Saldo insuficiente para aceptar la apuesta.")
-            }
-
             val updatedParticipants = updateParticipantStatus(
                 betSnapshot = betSnapshot,
                 participantId = currentUserId,
@@ -368,18 +323,7 @@ class FirebaseBetRepository(
                     .apply { add(currentUserId) }
                     .toList()
 
-            val currentPot =
-                (betSnapshot.get("confirmedPot") as? Number)
-                    ?.toDouble()
-                    ?: 0.0
-
             val now = System.currentTimeMillis()
-
-            transaction.update(
-                userReference,
-                "saldo",
-                currentBalance - stake
-            )
 
             transaction.update(
                 invitationReference,
@@ -394,7 +338,6 @@ class FirebaseBetRepository(
                 mapOf(
                     "participants" to updatedParticipants,
                     "acceptedParticipantIds" to acceptedIds,
-                    "confirmedPot" to currentPot + stake,
                     "updatedAtMillis" to now
                 )
             )
@@ -482,68 +425,82 @@ class FirebaseBetRepository(
         bet: Bet,
         onError: (String) -> Unit
     ) {
-        val updates = hashMapOf<String, Any>(
-            "status" to bet.status.name,
-            "updatedAtMillis" to System.currentTimeMillis()
-        )
-
-        bet.winnerName?.let {
-            updates["winnerName"] = it
-        }
-
-        firestore.collection(BETS_COLLECTION)
+        val betReference = firestore.collection(BETS_COLLECTION)
             .document(bet.id)
-            .update(updates)
-            .addOnFailureListener { exception ->
-                onError(
-                    exception.message
-                        ?: "No se pudo actualizar la apuesta."
+
+        firestore.runTransaction { transaction ->
+            val betSnapshot = transaction.get(betReference)
+
+            if (!betSnapshot.exists()) {
+                error("La apuesta ya no existe.")
+            }
+
+            val remoteBet = adapter.toBet(betSnapshot)
+                ?: error("La apuesta tiene datos incompletos.")
+
+            val now = System.currentTimeMillis()
+            val updates = hashMapOf<String, Any>(
+                "updatedAtMillis" to now
+            )
+
+            // El primer resultado registrado es el definitivo.
+            val resultBet = if (remoteBet.status == BetStatus.FINISHED) {
+                remoteBet
+            } else {
+                updates["status"] = bet.status.name
+                bet.winnerName?.let { updates["winnerName"] = it }
+
+                remoteBet.copy(
+                    status = bet.status,
+                    winnerName = bet.winnerName
                 )
             }
-    }
 
-    private fun betToMap(bet: Bet): Map<String, Any?> {
-        val participantMaps = bet.participants.map {
-            participantToMap(it)
+            // Si ya se procesaron los puntos, no se vuelven a asignar.
+            if (!remoteBet.pointsProcessed) {
+                val awards = PointsRules.calculate(resultBet)
+
+                if (awards.isNotEmpty()) {
+                    awards.forEach { award ->
+                        val userReference = firestore
+                            .collection(USERS_COLLECTION)
+                            .document(award.userId)
+
+                        val movementReference = firestore
+                            .collection(POINTS_COLLECTION)
+                            .document("${bet.id}_${award.userId}")
+
+                        transaction.update(
+                            userReference,
+                            FIELD_POINTS,
+                            FieldValue.increment(award.points.toLong())
+                        )
+
+                        transaction.set(
+                            movementReference,
+                            mapOf(
+                                "id" to movementReference.id,
+                                "userId" to award.userId,
+                                "betId" to bet.id,
+                                "betTitle" to resultBet.title,
+                                "points" to award.points,
+                                "wasWinner" to award.wasWinner,
+                                "createdAtMillis" to now
+                            )
+                        )
+                    }
+
+                    updates[FIELD_POINTS_PROCESSED] = true
+                }
+            }
+
+            transaction.update(betReference, updates)
+        }.addOnFailureListener { exception ->
+            onError(
+                exception.message
+                    ?: "No se pudo actualizar la apuesta."
+            )
         }
-
-        return mapOf(
-            "id" to bet.id,
-            "title" to bet.title,
-            "description" to bet.description,
-            "type" to bet.type.name,
-            "startsAtMillis" to bet.startsAt.toEpochMillis(),
-            "endsAtMillis" to bet.endsAt.toEpochMillis(),
-            "creatorId" to bet.creatorId,
-            "creatorName" to bet.creatorName,
-            "locationName" to bet.locationName,
-            "radiusMeters" to bet.radiusMeters,
-            "targetLatitude" to bet.targetLatitude,
-            "targetLongitude" to bet.targetLongitude,
-            "targetAccuracyMeters" to bet.targetAccuracyMeters,
-            "participants" to participantMaps,
-            "participantIds" to bet.participants.map { it.id },
-            "acceptedParticipantIds" to bet.acceptedParticipants
-                .map { it.id },
-            "stakePerParticipant" to bet.stakePerParticipant,
-            "confirmedPot" to bet.confirmedPot,
-            "status" to bet.status.name,
-            "winnerName" to bet.winnerName,
-            "createdAtMillis" to System.currentTimeMillis(),
-            "updatedAtMillis" to System.currentTimeMillis()
-        )
-    }
-
-    private fun participantToMap(
-        participant: BetParticipant
-    ): Map<String, Any> {
-        return mapOf(
-            "id" to participant.id,
-            "name" to participant.name,
-            "email" to participant.email,
-            "invitationStatus" to
-                    participant.invitationStatus.name
-        )
     }
 
     private fun updateParticipantStatus(
@@ -587,130 +544,6 @@ class FirebaseBetRepository(
         return updatedParticipants
     }
 
-    private fun documentToBet(
-        document: DocumentSnapshot
-    ): Bet? {
-        val startsAtMillis =
-            (document.get("startsAtMillis") as? Number)?.toLong()
-                ?: return null
-
-        val endsAtMillis =
-            (document.get("endsAtMillis") as? Number)?.toLong()
-                ?: return null
-
-        val participants =
-            (document.get("participants") as? List<*>)
-                .orEmpty()
-                .mapNotNull { item ->
-                    val rawMap = item as? Map<*, *>
-                        ?: return@mapNotNull null
-
-                    val id = rawMap["id"] as? String
-                        ?: return@mapNotNull null
-
-                    BetParticipant(
-                        id = id,
-                        name = rawMap["name"] as? String
-                            ?: "Usuario",
-                        email = rawMap["email"] as? String
-                            ?: "",
-                        invitationStatus = enumValueOrDefault(
-                            rawMap["invitationStatus"] as? String,
-                            ParticipantInvitationStatus.PENDING
-                        )
-                    )
-                }
-
-        return Bet(
-            id = document.getString("id") ?: document.id,
-            title = document.getString("title") ?: "Apuesta",
-            description = document.getString("description") ?: "",
-            type = enumValueOrDefault(
-                document.getString("type"),
-                BetType.TIME
-            ),
-            startsAt = startsAtMillis.toLocalDateTime(),
-            endsAt = endsAtMillis.toLocalDateTime(),
-            creatorId = document.getString("creatorId") ?: "",
-            creatorName = document.getString("creatorName") ?: "",
-            locationName = document.getString("locationName"),
-            radiusMeters =
-                (document.get("radiusMeters") as? Number)?.toInt(),
-            targetLatitude =
-                (document.get("targetLatitude") as? Number)
-                    ?.toDouble(),
-            targetLongitude =
-                (document.get("targetLongitude") as? Number)
-                    ?.toDouble(),
-            targetAccuracyMeters =
-                (document.get("targetAccuracyMeters") as? Number)
-                    ?.toFloat(),
-            participants = participants,
-            stakePerParticipant =
-                (document.get("stakePerParticipant") as? Number)
-                    ?.toDouble()
-                    ?: 0.0,
-            confirmedPot =
-                (document.get("confirmedPot") as? Number)
-                    ?.toDouble()
-                    ?: 0.0,
-            status = enumValueOrDefault(
-                document.getString("status"),
-                BetStatus.WAITING
-            ),
-            winnerName = document.getString("winnerName")
-        )
-    }
-
-    private fun documentToInvitation(
-        document: DocumentSnapshot
-    ): BetInvitation? {
-        val betId = document.getString("betId") ?: return null
-        val inviteeId = document.getString("inviteeId")
-            ?: return null
-
-        return BetInvitation(
-            id = document.getString("id") ?: document.id,
-            betId = betId,
-            betTitle = document.getString("betTitle") ?: "Apuesta",
-            inviterId = document.getString("inviterId") ?: "",
-            inviterName = document.getString("inviterName")
-                ?: "Usuario",
-            inviteeId = inviteeId,
-            inviteeName = document.getString("inviteeName")
-                ?: "Usuario",
-            stakeAmount =
-                (document.get("stakeAmount") as? Number)
-                    ?.toDouble()
-                    ?: 0.0,
-            status = enumValueOrDefault(
-                document.getString("status"),
-                InvitationStatus.PENDING
-            )
-        )
-    }
-
-    private fun LocalDateTime.toEpochMillis(): Long {
-        return atZone(ZoneId.systemDefault())
-            .toInstant()
-            .toEpochMilli()
-    }
-
-    private fun Long.toLocalDateTime(): LocalDateTime {
-        return Instant.ofEpochMilli(this)
-            .atZone(ZoneId.systemDefault())
-            .toLocalDateTime()
-    }
-
-    private inline fun <reified T : Enum<T>> enumValueOrDefault(
-        value: String?,
-        defaultValue: T
-    ): T {
-        return runCatching {
-            enumValueOf<T>(value.orEmpty())
-        }.getOrDefault(defaultValue)
-    }
-
     private fun normalizeEmail(email: String): String {
         return email.trim().lowercase(Locale.ROOT)
     }
@@ -720,5 +553,9 @@ class FirebaseBetRepository(
         const val PUBLIC_PROFILES_COLLECTION = "perfilesPublicos"
         const val BETS_COLLECTION = "apuestas"
         const val INVITATIONS_COLLECTION = "invitaciones"
+        const val POINTS_COLLECTION = "movimientosPuntos"
+        const val FIELD_POINTS = "puntos"
+        const val FIELD_POINTS_PROCESSED =
+            BetDocumentAdapter.FIELD_POINTS_PROCESSED
     }
 }

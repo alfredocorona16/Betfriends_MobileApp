@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.betfriends.app.domain.rules.PointsRules
 import com.betfriends.app.domain.model.Bet
 import com.betfriends.app.domain.model.BetStatus
 import com.betfriends.app.domain.model.BetType
@@ -33,7 +34,6 @@ import com.betfriends.app.domain.rules.CheckInResult
 import com.betfriends.app.location.CurrentLocationProvider
 import com.betfriends.app.location.DeviceLocation
 import java.time.LocalDateTime
-import java.util.Locale
 
 @Composable
 fun BetCheckInSection(
@@ -131,11 +131,7 @@ fun BetCheckInSection(
             )
 
             Text(
-                text = "Premio: ${
-                    formatCheckInCurrency(
-                        bet.totalPrize
-                    )
-                }",
+                text = "Puntos del ganador: +${PointsRules.POINTS_FOR_WINNER}",
                 style = MaterialTheme.typography.bodyLarge
             )
 
@@ -253,16 +249,4 @@ private fun hasLocationPermission(
         ) == PackageManager.PERMISSION_GRANTED
 
     return finePermission || coarsePermission
-}
-
-private fun formatCheckInCurrency(
-    amount: Double
-): String {
-    return "${'$'}${
-        String.format(
-            Locale.US,
-            "%.2f",
-            amount
-        )
-    } MXN"
 }

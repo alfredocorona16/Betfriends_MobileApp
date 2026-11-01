@@ -19,7 +19,7 @@ class BetsViewModel(
         private set
 
     private var activeUserId: String? = null
-    private var balanceSubscription: RepositorySubscription? = null
+    private var pointsSubscription: RepositorySubscription? = null
     private var betsSubscription: RepositorySubscription? = null
     private var invitationsSubscription: RepositorySubscription? = null
 
@@ -31,7 +31,7 @@ class BetsViewModel(
         stopSubscriptions()
         activeUserId = user.uid
         uiState = BetsUiState(
-            currentBalance = user.saldo
+            currentPoints = user.puntos
         )
 
         repository.ensurePublicProfile(
@@ -39,11 +39,11 @@ class BetsViewModel(
             onError = ::showMessage
         )
 
-        balanceSubscription = repository.observeBalance(
+        pointsSubscription = repository.observePoints(
             userId = user.uid,
-            onChanged = { balance ->
+            onChanged = { points ->
                 uiState = uiState.copy(
-                    currentBalance = balance
+                    currentPoints = points
                 )
             },
             onError = ::showMessage
@@ -178,7 +178,7 @@ class BetsViewModel(
             onSuccess = {
                 uiState = uiState.copy(
                     processingInvitationId = null,
-                    message = "Invitación aceptada y saldo actualizado."
+                    message = "Invitación aceptada."
                 )
             },
             onError = { error ->
@@ -267,11 +267,11 @@ class BetsViewModel(
     }
 
     private fun stopSubscriptions() {
-        balanceSubscription?.cancel()
+        pointsSubscription?.cancel()
         betsSubscription?.cancel()
         invitationsSubscription?.cancel()
 
-        balanceSubscription = null
+        pointsSubscription = null
         betsSubscription = null
         invitationsSubscription = null
     }
