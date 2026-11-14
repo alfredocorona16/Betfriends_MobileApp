@@ -1,3 +1,4 @@
+
 package com.betfriends.app.data.bet
 
 import com.betfriends.app.domain.model.Bet
@@ -63,8 +64,7 @@ class FirebaseBetRepository(
                 }
 
                 val points =
-                    (snapshot?.get(FIELD_POINTS) as? Number)?.toInt()
-                        ?: 0
+                    (snapshot?.get(FIELD_POINTS) as? Number)?.toInt() ?: 0
 
                 onChanged(points)
             }
@@ -163,10 +163,8 @@ class FirebaseBetRepository(
 
                 onResult(
                     PublicUserProfile(
-                        uid = document.getString("uid")
-                            ?: document.id,
-                        name = document.getString("nombre")
-                            ?: "Usuario",
+                        uid = document.getString("uid") ?: document.id,
+                        name = document.getString("nombre") ?: "Usuario",
                         email = document.getString("correo")
                             ?: normalizedEmail
                     )
@@ -190,8 +188,7 @@ class FirebaseBetRepository(
             id = creator.uid,
             name = creator.nombre,
             email = creator.correo,
-            invitationStatus =
-                ParticipantInvitationStatus.ACCEPTED
+            invitationStatus = ParticipantInvitationStatus.ACCEPTED
         )
 
         val invitedParticipants = bet.participants
@@ -199,13 +196,12 @@ class FirebaseBetRepository(
             .distinctBy { it.id }
             .map {
                 it.copy(
-                    invitationStatus =
-                        ParticipantInvitationStatus.PENDING
+                    invitationStatus = ParticipantInvitationStatus.PENDING
                 )
             }
 
         val participants = listOf(creatorParticipant) +
-                invitedParticipants
+            invitedParticipants
 
         if (participants.size < 2) {
             onError("Invita al menos a otro usuario.")
@@ -246,10 +242,8 @@ class FirebaseBetRepository(
                         "inviteeId" to participant.id,
                         "inviteeName" to participant.name,
                         "status" to InvitationStatus.PENDING.name,
-                        "createdAtMillis" to
-                                System.currentTimeMillis(),
-                        "updatedAtMillis" to
-                                System.currentTimeMillis()
+                        "createdAtMillis" to System.currentTimeMillis(),
+                        "updatedAtMillis" to System.currentTimeMillis()
                     )
                 )
             }
@@ -257,8 +251,7 @@ class FirebaseBetRepository(
             onSuccess()
         }.addOnFailureListener { exception ->
             onError(
-                exception.message
-                    ?: "No se pudo crear la apuesta."
+                exception.message ?: "No se pudo crear la apuesta."
             )
         }
     }
@@ -315,8 +308,7 @@ class FirebaseBetRepository(
             )
 
             val acceptedIds =
-                (betSnapshot.get("acceptedParticipantIds")
-                        as? List<*>)
+                (betSnapshot.get("acceptedParticipantIds") as? List<*>)
                     .orEmpty()
                     .filterIsInstance<String>()
                     .toMutableSet()
@@ -374,6 +366,10 @@ class FirebaseBetRepository(
                 transaction.get(invitationReference)
             val betSnapshot = transaction.get(betReference)
 
+            if (!invitationSnapshot.exists()) {
+                error("La invitación ya no existe.")
+            }
+
             if (
                 invitationSnapshot.getString("status") !=
                 InvitationStatus.PENDING.name
@@ -386,6 +382,10 @@ class FirebaseBetRepository(
                 currentUserId
             ) {
                 error("No puedes responder esta invitación.")
+            }
+
+            if (!betSnapshot.exists()) {
+                error("La apuesta ya no existe.")
             }
 
             val updatedParticipants = updateParticipantStatus(
@@ -439,6 +439,7 @@ class FirebaseBetRepository(
                 ?: error("La apuesta tiene datos incompletos.")
 
             val now = System.currentTimeMillis()
+
             val updates = hashMapOf<String, Any>(
                 "updatedAtMillis" to now
             )
@@ -448,7 +449,9 @@ class FirebaseBetRepository(
                 remoteBet
             } else {
                 updates["status"] = bet.status.name
-                bet.winnerName?.let { updates["winnerName"] = it }
+                bet.winnerName?.let {
+                    updates["winnerName"] = it
+                }
 
                 remoteBet.copy(
                     status = bet.status,
@@ -456,7 +459,7 @@ class FirebaseBetRepository(
                 )
             }
 
-            // Si ya se procesaron los puntos, no se vuelven a asignar.
+            // Evita procesar los puntos más de una vez.
             if (!remoteBet.pointsProcessed) {
                 val awards = PointsRules.calculate(resultBet)
 
@@ -503,6 +506,10 @@ class FirebaseBetRepository(
         }
     }
 
+    /**
+     * Actualiza el estado de invitación de un participante
+     * conservando sus demás datos, incluido su rol.
+     */
     private fun updateParticipantStatus(
         betSnapshot: DocumentSnapshot,
         participantId: String,
@@ -529,11 +536,15 @@ class FirebaseBetRepository(
                     ?: ParticipantInvitationStatus.PENDING.name
             }
 
+            val role = rawMap["role"] as? String
+                ?: "COMPETITOR"
+
             mapOf(
                 "id" to id,
                 "name" to (rawMap["name"] as? String ?: "Usuario"),
                 "email" to (rawMap["email"] as? String ?: ""),
-                "invitationStatus" to status
+                "invitationStatus" to status,
+                "role" to role
             )
         }
 
