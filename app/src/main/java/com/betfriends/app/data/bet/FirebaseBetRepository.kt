@@ -298,7 +298,7 @@ class FirebaseBetRepository(
             }
 
             if (!betSnapshot.exists()) {
-                error("La apuesta ya no existe.")
+                error(BET_NOT_FOUND_MESSAGE)
             }
 
             val updatedParticipants = updateParticipantStatus(
@@ -385,7 +385,7 @@ class FirebaseBetRepository(
             }
 
             if (!betSnapshot.exists()) {
-                error("La apuesta ya no existe.")
+                error(BET_NOT_FOUND_MESSAGE)
             }
 
             val updatedParticipants = updateParticipantStatus(
@@ -432,7 +432,7 @@ class FirebaseBetRepository(
             val betSnapshot = transaction.get(betReference)
 
             if (!betSnapshot.exists()) {
-                error("La apuesta ya no existe.")
+                error(BET_NOT_FOUND_MESSAGE)
             }
 
             val remoteBet = adapter.toBet(betSnapshot)
@@ -568,5 +568,7 @@ class FirebaseBetRepository(
         const val FIELD_POINTS = "puntos"
         const val FIELD_POINTS_PROCESSED =
             BetDocumentAdapter.FIELD_POINTS_PROCESSED
+
+        const val BET_NOT_FOUND_MESSAGE = "La apuesta ya no existe."
     }
 }
