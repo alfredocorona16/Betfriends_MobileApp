@@ -17,6 +17,8 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import java.util.Locale
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.Transaction
 
 class FirebaseBetRepository(
     private val firestore: FirebaseFirestore =
@@ -255,6 +257,40 @@ class FirebaseBetRepository(
             )
         }
     }
+    private fun getBetForPendingInvitation(
+        transaction: Transaction,
+        invitationReference: DocumentReference,
+        betReference: DocumentReference,
+        currentUserId: String
+    ): DocumentSnapshot {
+
+        val invitationSnapshot = transaction.get(invitationReference)
+        val betSnapshot = transaction.get(betReference)
+
+        if (!invitationSnapshot.exists()) {
+            error("La invitación ya no existe.")
+        }
+
+        if (
+            invitationSnapshot.getString("status") !=
+            InvitationStatus.PENDING.name
+        ) {
+            error("La invitación ya fue respondida.")
+        }
+
+        if (
+            invitationSnapshot.getString("inviteeId") !=
+            currentUserId
+        ) {
+            error("No puedes responder esta invitación.")
+        }
+
+        if (!betSnapshot.exists()) {
+            error(BET_NOT_FOUND_MESSAGE)
+        }
+
+        return betSnapshot
+    }
 
     override fun acceptInvitation(
         invitation: BetInvitation,
@@ -275,31 +311,13 @@ class FirebaseBetRepository(
             .document(invitation.betId)
 
         firestore.runTransaction { transaction ->
-            val invitationSnapshot =
-                transaction.get(invitationReference)
-            val betSnapshot = transaction.get(betReference)
 
-            if (!invitationSnapshot.exists()) {
-                error("La invitación ya no existe.")
-            }
-
-            if (
-                invitationSnapshot.getString("status") !=
-                InvitationStatus.PENDING.name
-            ) {
-                error("La invitación ya fue respondida.")
-            }
-
-            if (
-                invitationSnapshot.getString("inviteeId") !=
-                currentUserId
-            ) {
-                error("No puedes responder esta invitación.")
-            }
-
-            if (!betSnapshot.exists()) {
-                error(BET_NOT_FOUND_MESSAGE)
-            }
+            val betSnapshot = getBetForPendingInvitation(
+                transaction = transaction,
+                invitationReference = invitationReference,
+                betReference = betReference,
+                currentUserId = currentUserId
+            )
 
             val updatedParticipants = updateParticipantStatus(
                 betSnapshot = betSnapshot,
@@ -333,6 +351,7 @@ class FirebaseBetRepository(
                     "updatedAtMillis" to now
                 )
             )
+
         }.addOnSuccessListener {
             onSuccess()
         }.addOnFailureListener { exception ->
@@ -342,7 +361,6 @@ class FirebaseBetRepository(
             )
         }
     }
-
     override fun declineInvitation(
         invitation: BetInvitation,
         currentUserId: String,
@@ -362,31 +380,13 @@ class FirebaseBetRepository(
             .document(invitation.betId)
 
         firestore.runTransaction { transaction ->
-            val invitationSnapshot =
-                transaction.get(invitationReference)
-            val betSnapshot = transaction.get(betReference)
 
-            if (!invitationSnapshot.exists()) {
-                error("La invitación ya no existe.")
-            }
-
-            if (
-                invitationSnapshot.getString("status") !=
-                InvitationStatus.PENDING.name
-            ) {
-                error("La invitación ya fue respondida.")
-            }
-
-            if (
-                invitationSnapshot.getString("inviteeId") !=
-                currentUserId
-            ) {
-                error("No puedes responder esta invitación.")
-            }
-
-            if (!betSnapshot.exists()) {
-                error(BET_NOT_FOUND_MESSAGE)
-            }
+            val betSnapshot = getBetForPendingInvitation(
+                transaction = transaction,
+                invitationReference = invitationReference,
+                betReference = betReference,
+                currentUserId = currentUserId
+            )
 
             val updatedParticipants = updateParticipantStatus(
                 betSnapshot = betSnapshot,
@@ -411,6 +411,7 @@ class FirebaseBetRepository(
                     "updatedAtMillis" to now
                 )
             )
+
         }.addOnSuccessListener {
             onSuccess()
         }.addOnFailureListener { exception ->
@@ -420,7 +421,6 @@ class FirebaseBetRepository(
             )
         }
     }
-
     override fun updateBetOutcome(
         bet: Bet,
         onError: (String) -> Unit
