@@ -73,11 +73,6 @@ dependencies {
     // Pruebas
     testImplementation(libs.junit)
 
-    // Compose BOM también debe aplicarse a las pruebas instrumentadas
-    androidTestImplementation(
-        platform(libs.androidx.compose.bom)
-    )
-
     androidTestImplementation(
         libs.androidx.compose.ui.test.junit4
     )

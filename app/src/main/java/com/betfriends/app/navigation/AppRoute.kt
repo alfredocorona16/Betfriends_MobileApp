@@ -23,6 +23,3 @@ data object CreateBet : AppRoute
 
 @Serializable
 data object MyBets : AppRoute
-
-@Serializable
-data object EditProfile : AppRoute
