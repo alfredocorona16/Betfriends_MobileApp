@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Card
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -55,8 +57,10 @@ fun HomeScreen(
     user: UserProfile,
     bets: List<Bet>,
     onCreateBet: () -> Unit,
+    pendingInvitations: Int,
     onViewBets: () -> Unit,
     onEditProfile: () -> Unit,
+    onViewPoints: () -> Unit,
     onLogout: () -> Unit
 ) {
     Column(
@@ -72,6 +76,8 @@ fun HomeScreen(
     ) {
         UserHeader(
             name = user.nombre,
+            pendingInvitations = pendingInvitations,
+            onViewInvitations = onViewBets,
             onEditProfile = onEditProfile,
             onLogout = onLogout
         )
@@ -81,7 +87,8 @@ fun HomeScreen(
         )
 
         PointsCard(
-            points = user.puntos
+            points = user.puntos,
+            onClick = onViewPoints
         )
 
         Spacer(
@@ -117,6 +124,8 @@ fun HomeScreen(
 @Composable
 private fun UserHeader(
     name: String,
+    pendingInvitations: Int,
+    onViewInvitations: () -> Unit,
     onEditProfile: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -153,23 +162,36 @@ private fun UserHeader(
                 Arrangement.spacedBy(12.dp)
         ) {
             IconButton(
-                onClick = {
-                    // Las notificaciones se implementarán después.
-                },
+                onClick = onViewInvitations,
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(
                         MaterialTheme.colorScheme.surface
                     )
             ) {
-                Icon(
-                    imageVector =
-                        Icons.Default.Notifications,
-                    contentDescription =
-                        "Notificaciones",
-                    tint =
-                        MaterialTheme.colorScheme.onSurface
-                )
+                BadgedBox(
+                    badge = {
+                        if (pendingInvitations > 0) {
+                            Badge {
+                                Text(pendingInvitations.toString())
+                            }
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector =
+                            Icons.Default.Notifications,
+                        contentDescription =
+                            if (pendingInvitations > 0) {
+                                "Tienes $pendingInvitations " +
+                                        "invitaciones pendientes"
+                            } else {
+                                "Notificaciones"
+                            },
+                        tint =
+                            MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
 
             IconButton(
@@ -211,10 +233,14 @@ private fun UserHeader(
 
 @Composable
 private fun PointsCard(
-    points: Int
+    points: Int,
+    onClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor =
@@ -246,6 +272,19 @@ private fun PointsCard(
                     MaterialTheme.colorScheme.onPrimary,
                 fontSize = 36.sp,
                 fontWeight = FontWeight.ExtraBold
+            )
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
+            Text(
+                text = "Toca para ver tu historial",
+                color = MaterialTheme
+                    .colorScheme
+                    .onPrimary
+                    .copy(alpha = 0.8f),
+                fontSize = 13.sp
             )
         }
     }
@@ -376,7 +415,7 @@ private fun ActiveBetsSection(
                 )
 
                 Text(
-                    text = "Presiona “Apuesta” para crear la primera.",
+                    text = "Presiona ÔÇ£ApuestaÔÇØ para crear la primera.",
                     color =
                         MaterialTheme.colorScheme.primary,
                     style =
@@ -428,7 +467,7 @@ private fun ActiveBetRow(
 
     val betType = when (bet.type) {
         BetType.TIME -> "Apuesta por tiempo"
-        BetType.LOCATION -> "Apuesta por ubicación"
+        BetType.LOCATION -> "Apuesta por ubicaci├│n"
     }
 
     Row(
@@ -509,7 +548,9 @@ private fun HomeScreenPreview() {
             ),
             onCreateBet = {},
             onViewBets = {},
+            pendingInvitations = 2,
             onEditProfile = {},
+            onViewPoints = {},
             onLogout = {}
         )
     }

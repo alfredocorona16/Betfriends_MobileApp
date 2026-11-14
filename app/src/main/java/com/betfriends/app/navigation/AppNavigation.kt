@@ -155,9 +155,11 @@ fun BetFriendsApp() {
 
             entry<Home> {
                 if (displayedUser != null) {
+
                     HomeScreen(
                         user = displayedUser,
                         bets = betsState.bets,
+                        pendingInvitations = 0,
                         onCreateBet = {
                             betsViewModel.clearMessage()
                             betsViewModel.clearUserSearch()
@@ -170,6 +172,9 @@ fun BetFriendsApp() {
                         onEditProfile = {
                             authViewModel.clearError()
                             backStack.add(EditProfile)
+                        },
+                        onViewPoints = {
+                            // Pendiente: navegación al historial de puntos
                         },
                         onLogout = {
                             authViewModel.logout()
