@@ -1,3 +1,4 @@
+
 package com.betfriends.app.data.bet
 
 import com.betfriends.app.domain.model.Bet
@@ -16,6 +17,8 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import java.util.Locale
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.Transaction
 
 class FirebaseBetRepository(
     private val firestore: FirebaseFirestore =
@@ -63,8 +66,7 @@ class FirebaseBetRepository(
                 }
 
                 val points =
-                    (snapshot?.get(FIELD_POINTS) as? Number)?.toInt()
-                        ?: 0
+                    (snapshot?.get(FIELD_POINTS) as? Number)?.toInt() ?: 0
 
                 onChanged(points)
             }
@@ -163,10 +165,8 @@ class FirebaseBetRepository(
 
                 onResult(
                     PublicUserProfile(
-                        uid = document.getString("uid")
-                            ?: document.id,
-                        name = document.getString("nombre")
-                            ?: "Usuario",
+                        uid = document.getString("uid") ?: document.id,
+                        name = document.getString("nombre") ?: "Usuario",
                         email = document.getString("correo")
                             ?: normalizedEmail
                     )
@@ -190,8 +190,7 @@ class FirebaseBetRepository(
             id = creator.uid,
             name = creator.nombre,
             email = creator.correo,
-            invitationStatus =
-                ParticipantInvitationStatus.ACCEPTED
+            invitationStatus = ParticipantInvitationStatus.ACCEPTED
         )
 
         val invitedParticipants = bet.participants
@@ -199,13 +198,12 @@ class FirebaseBetRepository(
             .distinctBy { it.id }
             .map {
                 it.copy(
-                    invitationStatus =
-                        ParticipantInvitationStatus.PENDING
+                    invitationStatus = ParticipantInvitationStatus.PENDING
                 )
             }
 
         val participants = listOf(creatorParticipant) +
-                invitedParticipants
+            invitedParticipants
 
         if (participants.size < 2) {
             onError("Invita al menos a otro usuario.")
@@ -246,10 +244,8 @@ class FirebaseBetRepository(
                         "inviteeId" to participant.id,
                         "inviteeName" to participant.name,
                         "status" to InvitationStatus.PENDING.name,
-                        "createdAtMillis" to
-                                System.currentTimeMillis(),
-                        "updatedAtMillis" to
-                                System.currentTimeMillis()
+                        "createdAtMillis" to System.currentTimeMillis(),
+                        "updatedAtMillis" to System.currentTimeMillis()
                     )
                 )
             }
@@ -257,10 +253,43 @@ class FirebaseBetRepository(
             onSuccess()
         }.addOnFailureListener { exception ->
             onError(
-                exception.message
-                    ?: "No se pudo crear la apuesta."
+                exception.message ?: "No se pudo crear la apuesta."
             )
         }
+    }
+    private fun getBetForPendingInvitation(
+        transaction: Transaction,
+        invitationReference: DocumentReference,
+        betReference: DocumentReference,
+        currentUserId: String
+    ): DocumentSnapshot {
+
+        val invitationSnapshot = transaction.get(invitationReference)
+        val betSnapshot = transaction.get(betReference)
+
+        if (!invitationSnapshot.exists()) {
+            error("La invitación ya no existe.")
+        }
+
+        if (
+            invitationSnapshot.getString("status") !=
+            InvitationStatus.PENDING.name
+        ) {
+            error("La invitación ya fue respondida.")
+        }
+
+        if (
+            invitationSnapshot.getString("inviteeId") !=
+            currentUserId
+        ) {
+            error("No puedes responder esta invitación.")
+        }
+
+        if (!betSnapshot.exists()) {
+            error(BET_NOT_FOUND_MESSAGE)
+        }
+
+        return betSnapshot
     }
 
     override fun acceptInvitation(
@@ -269,91 +298,37 @@ class FirebaseBetRepository(
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
-        if (invitation.inviteeId != currentUserId) {
-            onError("Esta invitación pertenece a otro usuario.")
-            return
-        }
-
-        val invitationReference = firestore
-            .collection(INVITATIONS_COLLECTION)
-            .document(invitation.id)
-
-        val betReference = firestore.collection(BETS_COLLECTION)
-            .document(invitation.betId)
-
-        firestore.runTransaction { transaction ->
-            val invitationSnapshot =
-                transaction.get(invitationReference)
-            val betSnapshot = transaction.get(betReference)
-
-            if (!invitationSnapshot.exists()) {
-                error("La invitación ya no existe.")
-            }
-
-            if (
-                invitationSnapshot.getString("status") !=
-                InvitationStatus.PENDING.name
-            ) {
-                error("La invitación ya fue respondida.")
-            }
-
-            if (
-                invitationSnapshot.getString("inviteeId") !=
-                currentUserId
-            ) {
-                error("No puedes responder esta invitación.")
-            }
-
-            if (!betSnapshot.exists()) {
-                error("La apuesta ya no existe.")
-            }
-
-            val updatedParticipants = updateParticipantStatus(
-                betSnapshot = betSnapshot,
-                participantId = currentUserId,
-                newStatus = ParticipantInvitationStatus.ACCEPTED
-            )
-
-            val acceptedIds =
-                (betSnapshot.get("acceptedParticipantIds")
-                        as? List<*>)
-                    .orEmpty()
-                    .filterIsInstance<String>()
-                    .toMutableSet()
-                    .apply { add(currentUserId) }
-                    .toList()
-
-            val now = System.currentTimeMillis()
-
-            transaction.update(
-                invitationReference,
-                mapOf(
-                    "status" to InvitationStatus.ACCEPTED.name,
-                    "updatedAtMillis" to now
-                )
-            )
-
-            transaction.update(
-                betReference,
-                mapOf(
-                    "participants" to updatedParticipants,
-                    "acceptedParticipantIds" to acceptedIds,
-                    "updatedAtMillis" to now
-                )
-            )
-        }.addOnSuccessListener {
-            onSuccess()
-        }.addOnFailureListener { exception ->
-            onError(
-                exception.message
-                    ?: "No se pudo aceptar la invitación."
-            )
-        }
+        respondToInvitation(
+            invitation = invitation,
+            currentUserId = currentUserId,
+            newStatus = ParticipantInvitationStatus.ACCEPTED,
+            invitationStatus = InvitationStatus.ACCEPTED,
+            onSuccess = onSuccess,
+            onError = onError
+        )
     }
 
     override fun declineInvitation(
         invitation: BetInvitation,
         currentUserId: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        respondToInvitation(
+            invitation = invitation,
+            currentUserId = currentUserId,
+            newStatus = ParticipantInvitationStatus.DECLINED,
+            invitationStatus = InvitationStatus.DECLINED,
+            onSuccess = onSuccess,
+            onError = onError
+        )
+    }
+
+    private fun respondToInvitation(
+        invitation: BetInvitation,
+        currentUserId: String,
+        newStatus: ParticipantInvitationStatus,
+        invitationStatus: InvitationStatus,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
@@ -366,58 +341,70 @@ class FirebaseBetRepository(
             .collection(INVITATIONS_COLLECTION)
             .document(invitation.id)
 
-        val betReference = firestore.collection(BETS_COLLECTION)
+        val betReference = firestore
+            .collection(BETS_COLLECTION)
             .document(invitation.betId)
 
         firestore.runTransaction { transaction ->
-            val invitationSnapshot =
-                transaction.get(invitationReference)
-            val betSnapshot = transaction.get(betReference)
-
-            if (
-                invitationSnapshot.getString("status") !=
-                InvitationStatus.PENDING.name
-            ) {
-                error("La invitación ya fue respondida.")
-            }
-
-            if (
-                invitationSnapshot.getString("inviteeId") !=
-                currentUserId
-            ) {
-                error("No puedes responder esta invitación.")
-            }
+            val betSnapshot = getBetForPendingInvitation(
+                transaction = transaction,
+                invitationReference = invitationReference,
+                betReference = betReference,
+                currentUserId = currentUserId
+            )
 
             val updatedParticipants = updateParticipantStatus(
                 betSnapshot = betSnapshot,
                 participantId = currentUserId,
-                newStatus = ParticipantInvitationStatus.DECLINED
+                newStatus = newStatus
             )
 
             val now = System.currentTimeMillis()
 
+            val betUpdates = mutableMapOf<String, Any>(
+                "participants" to updatedParticipants,
+                "updatedAtMillis" to now
+            )
+
+            if (invitationStatus == InvitationStatus.ACCEPTED) {
+                val acceptedIds = (
+                        betSnapshot.get("acceptedParticipantIds") as? List<*>
+                        )
+                    .orEmpty()
+                    .filterIsInstance<String>()
+                    .toMutableSet()
+                    .apply { add(currentUserId) }
+                    .toList()
+
+                betUpdates["acceptedParticipantIds"] = acceptedIds
+            }
+
             transaction.update(
                 invitationReference,
                 mapOf(
-                    "status" to InvitationStatus.DECLINED.name,
+                    "status" to invitationStatus.name,
                     "updatedAtMillis" to now
                 )
             )
 
             transaction.update(
                 betReference,
-                mapOf(
-                    "participants" to updatedParticipants,
-                    "updatedAtMillis" to now
-                )
+                betUpdates
             )
         }.addOnSuccessListener {
             onSuccess()
         }.addOnFailureListener { exception ->
-            onError(
-                exception.message
-                    ?: "No se pudo rechazar la invitación."
-            )
+            val message = when (invitationStatus) {
+                InvitationStatus.ACCEPTED ->
+                    "No se pudo aceptar la invitación."
+
+                InvitationStatus.DECLINED ->
+                    "No se pudo rechazar la invitación."
+
+                else -> "No se pudo responder la invitación."
+            }
+
+            onError(exception.message ?: message)
         }
     }
 
@@ -432,13 +419,14 @@ class FirebaseBetRepository(
             val betSnapshot = transaction.get(betReference)
 
             if (!betSnapshot.exists()) {
-                error("La apuesta ya no existe.")
+                error(BET_NOT_FOUND_MESSAGE)
             }
 
             val remoteBet = adapter.toBet(betSnapshot)
                 ?: error("La apuesta tiene datos incompletos.")
 
             val now = System.currentTimeMillis()
+
             val updates = hashMapOf<String, Any>(
                 "updatedAtMillis" to now
             )
@@ -448,7 +436,9 @@ class FirebaseBetRepository(
                 remoteBet
             } else {
                 updates["status"] = bet.status.name
-                bet.winnerName?.let { updates["winnerName"] = it }
+                bet.winnerName?.let {
+                    updates["winnerName"] = it
+                }
 
                 remoteBet.copy(
                     status = bet.status,
@@ -456,7 +446,7 @@ class FirebaseBetRepository(
                 )
             }
 
-            // Si ya se procesaron los puntos, no se vuelven a asignar.
+            // Evita procesar los puntos más de una vez.
             if (!remoteBet.pointsProcessed) {
                 val awards = PointsRules.calculate(resultBet)
 
@@ -503,6 +493,10 @@ class FirebaseBetRepository(
         }
     }
 
+    /**
+     * Actualiza el estado de invitación de un participante
+     * conservando sus demás datos, incluido su rol.
+     */
     private fun updateParticipantStatus(
         betSnapshot: DocumentSnapshot,
         participantId: String,
@@ -529,11 +523,15 @@ class FirebaseBetRepository(
                     ?: ParticipantInvitationStatus.PENDING.name
             }
 
+            val role = rawMap["role"] as? String
+                ?: "COMPETITOR"
+
             mapOf(
                 "id" to id,
                 "name" to (rawMap["name"] as? String ?: "Usuario"),
                 "email" to (rawMap["email"] as? String ?: ""),
-                "invitationStatus" to status
+                "invitationStatus" to status,
+                "role" to role
             )
         }
 
@@ -557,5 +555,7 @@ class FirebaseBetRepository(
         const val FIELD_POINTS = "puntos"
         const val FIELD_POINTS_PROCESSED =
             BetDocumentAdapter.FIELD_POINTS_PROCESSED
+
+        const val BET_NOT_FOUND_MESSAGE = "La apuesta ya no existe."
     }
 }
