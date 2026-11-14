@@ -1,5 +1,8 @@
 package com.betfriends.app.ui.createbet
 
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,6 +42,7 @@ import com.betfriends.app.domain.model.BetParticipant
 import com.betfriends.app.domain.model.BetStatus
 import com.betfriends.app.domain.model.BetType
 import com.betfriends.app.domain.model.ParticipantInvitationStatus
+import com.betfriends.app.domain.model.ParticipantRole
 import com.betfriends.app.domain.model.PublicUserProfile
 import com.betfriends.app.domain.model.UserProfile
 import com.betfriends.app.location.DeviceLocation
@@ -316,6 +320,49 @@ fun CreateBetScreen(
                             },
                             style = MaterialTheme.typography.bodySmall
                         )
+
+                        Row(
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = participant.role ==
+                                        ParticipantRole.COMPETITOR,
+                                onClick = {
+                                    participants[index] =
+                                        participant.copy(
+                                            role = ParticipantRole
+                                                .COMPETITOR
+                                        )
+                                    errorMessage = null
+                                }
+                            )
+                            Text(
+                                text = "Competidor",
+                                style = MaterialTheme
+                                    .typography.bodySmall
+                            )
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            RadioButton(
+                                selected = participant.role ==
+                                        ParticipantRole.MODERATOR,
+                                onClick = {
+                                    participants[index] =
+                                        participant.copy(
+                                            role = ParticipantRole
+                                                .MODERATOR
+                                        )
+                                    errorMessage = null
+                                }
+                            )
+                            Text(
+                                text = "Moderador",
+                                style = MaterialTheme
+                                    .typography.bodySmall
+                            )
+                        }
                     }
 
                     if (participant.id != currentUser.uid) {
@@ -496,6 +543,11 @@ private fun validateAndCreateBet(
     }
     require(participants.size <= 10) {
         "Puedes agregar un máximo de 10 participantes."
+    }
+    require(
+        participants.count { it.role == ParticipantRole.COMPETITOR } >= 2
+    ) {
+        "Debe haber al menos 2 competidores en la apuesta."
     }
 
     var validLocationName: String? = null

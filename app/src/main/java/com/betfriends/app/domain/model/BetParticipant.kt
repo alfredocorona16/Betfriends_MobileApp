@@ -7,8 +7,14 @@ data class BetParticipant(
     val name: String,
     val email: String = "",
     val invitationStatus: ParticipantInvitationStatus =
-        ParticipantInvitationStatus.ACCEPTED
+        ParticipantInvitationStatus.ACCEPTED,
+    val role: ParticipantRole = ParticipantRole.COMPETITOR
 )
+
+enum class ParticipantRole {
+    COMPETITOR,
+    MODERATOR
+}
 
 enum class ParticipantInvitationStatus {
     PENDING,
