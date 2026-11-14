@@ -31,6 +31,16 @@ data class Bet(
             it.invitationStatus ==
                     ParticipantInvitationStatus.ACCEPTED
         }
+
+    val competitors: List<BetParticipant>
+        get() = participants.filter {
+            it.role == ParticipantRole.COMPETITOR
+        }
+
+    val acceptedCompetitors: List<BetParticipant>
+        get() = acceptedParticipants.filter {
+            it.role == ParticipantRole.COMPETITOR
+        }
 }
 
 enum class BetType {

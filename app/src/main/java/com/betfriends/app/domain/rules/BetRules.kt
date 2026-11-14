@@ -1,5 +1,6 @@
 package com.betfriends.app.domain.rules
 
+import com.betfriends.app.domain.model.ParticipantRole
 import com.betfriends.app.domain.model.Bet
 import com.betfriends.app.domain.model.BetCheckIn
 import com.betfriends.app.domain.model.BetStatus
@@ -65,6 +66,12 @@ object BetRules {
         ) {
             return CheckInResult.Rejected(
                 "El usuario $cleanName no participa en esta apuesta."
+            )
+        }
+
+        if (registeredParticipant?.role == ParticipantRole.MODERATOR) {
+            return CheckInResult.Rejected(
+                "Un moderador no compite en la apuesta."
             )
         }
 

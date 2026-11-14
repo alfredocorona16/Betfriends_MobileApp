@@ -22,7 +22,8 @@ object PointsRules {
         PARTICIPATION_POINTS + VICTORY_BONUS_POINTS
 
     /**
-     * Devuelve los puntos de cada participante que aceptó.
+     * Devuelve los puntos de cada competidor que aceptó.
+     * Los moderadores no compiten, por lo que no reciben puntos.
      * Si la apuesta no terminó o no tiene ganador, no hay puntos.
      */
     fun calculate(bet: Bet): List<PointsAward> {
@@ -36,11 +37,11 @@ object PointsRules {
             return emptyList()
         }
 
-        val winnerId = bet.acceptedParticipants
+        val winnerId = bet.acceptedCompetitors
             .firstOrNull { it.name.equals(winnerName, ignoreCase = true) }
             ?.id
 
-        return bet.acceptedParticipants.map { participant ->
+        return bet.acceptedCompetitors.map { participant ->
             val isWinner = participant.id == winnerId
 
             PointsAward(

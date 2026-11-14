@@ -160,7 +160,7 @@ fun BetCheckInSection(
                     Arrangement.spacedBy(8.dp)
             ) {
                 items(
-                    items = bet.participants,
+                    items = bet.competitors,
                     key = { participant ->
                         participant.id
                     }

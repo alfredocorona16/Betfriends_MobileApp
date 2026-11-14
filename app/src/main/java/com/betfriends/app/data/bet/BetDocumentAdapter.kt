@@ -7,6 +7,7 @@ import com.betfriends.app.domain.model.BetStatus
 import com.betfriends.app.domain.model.BetType
 import com.betfriends.app.domain.model.InvitationStatus
 import com.betfriends.app.domain.model.ParticipantInvitationStatus
+import com.betfriends.app.domain.model.ParticipantRole
 import com.google.firebase.firestore.DocumentSnapshot
 import java.time.Instant
 import java.time.LocalDateTime
@@ -56,6 +57,10 @@ class BetDocumentAdapter {
                         invitationStatus = enumValueOrDefault(
                             rawMap["invitationStatus"] as? String,
                             ParticipantInvitationStatus.PENDING
+                        ),
+                        role = enumValueOrDefault(
+                            rawMap["role"] as? String,
+                            ParticipantRole.COMPETITOR
                         )
                     )
                 }
@@ -155,7 +160,8 @@ class BetDocumentAdapter {
             "id" to participant.id,
             "name" to participant.name,
             "email" to participant.email,
-            "invitationStatus" to participant.invitationStatus.name
+            "invitationStatus" to participant.invitationStatus.name,
+            "role" to participant.role.name
         )
     }
 

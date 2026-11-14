@@ -30,6 +30,7 @@ import com.betfriends.app.domain.model.BetInvitation
 import com.betfriends.app.domain.model.BetStatus
 import com.betfriends.app.domain.model.BetType
 import com.betfriends.app.domain.model.ParticipantInvitationStatus
+import com.betfriends.app.domain.model.ParticipantRole
 import com.betfriends.app.ui.components.BetCheckInSection
 import java.time.format.DateTimeFormatter
 
@@ -264,8 +265,13 @@ private fun BetCard(
                             "Rechazó"
                     }
 
+                    val roleLabel = when (participant.role) {
+                        ParticipantRole.COMPETITOR -> "Competidor"
+                        ParticipantRole.MODERATOR -> "Moderador"
+                    }
+
                     Text(
-                        text = "• ${participant.name}: $statusLabel",
+                        text = "• ${participant.name} ($roleLabel): $statusLabel",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
