@@ -128,6 +128,8 @@ private fun UserHeader(
         verticalAlignment =
             Alignment.CenterVertically
     ) {
+
+        IconButton() { }
         Column {
             Text(
                 text = "Hola,",
