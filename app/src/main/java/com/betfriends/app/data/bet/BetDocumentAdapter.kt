@@ -1,12 +1,15 @@
 package com.betfriends.app.data.bet
 
 import com.betfriends.app.domain.model.Bet
+import com.betfriends.app.domain.model.BetCheckIn
 import com.betfriends.app.domain.model.BetInvitation
 import com.betfriends.app.domain.model.BetParticipant
 import com.betfriends.app.domain.model.BetStatus
 import com.betfriends.app.domain.model.BetType
 import com.betfriends.app.domain.model.InvitationStatus
 import com.betfriends.app.domain.model.ParticipantInvitationStatus
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.DocumentSnapshot
 import java.time.Instant
 import java.time.LocalDateTime
@@ -37,6 +40,8 @@ class BetDocumentAdapter {
             (document.get("endsAtMillis") as? Number)?.toLong()
                 ?: return null
 
+        val accepted = document.get("acceptedParticipantIds") as? List<*>
+        val declined = (document.get("declinedParticipantIds") as? List<*>).orEmpty()
         val participants =
             (document.get("participants") as? List<*>)
                 .orEmpty()
@@ -53,12 +58,27 @@ class BetDocumentAdapter {
                             ?: "Usuario",
                         email = rawMap["email"] as? String
                             ?: "",
-                        invitationStatus = enumValueOrDefault(
-                            rawMap["invitationStatus"] as? String,
-                            ParticipantInvitationStatus.PENDING
-                        )
+                        invitationStatus = when {
+                            id in declined -> ParticipantInvitationStatus.DECLINED
+                            accepted?.contains(id) == true -> ParticipantInvitationStatus.ACCEPTED
+                            document.contains("declinedParticipantIds") &&
+                                rawMap["invitationStatus"] != "DECLINED" -> ParticipantInvitationStatus.PENDING
+                            else -> enumValueOrDefault(rawMap["invitationStatus"] as? String,
+                                ParticipantInvitationStatus.PENDING)
+                        }
                     )
                 }
+
+        val arrivals = (document.get("checkInsByUid") as? Map<*, *>).orEmpty().mapNotNull { (key, value) ->
+            val uid = key as? String ?: return@mapNotNull null
+            val entry = value as? Map<*, *> ?: return@mapNotNull null
+            val at = entry["at"] as? Timestamp ?: return@mapNotNull null
+            val name = entry["name"] as? String ?: return@mapNotNull null
+            val position = entry["position"] as? GeoPoint
+            BetCheckIn(uid, name, at.toDate().time.toLocalDateTime(), position?.latitude,
+                position?.longitude, (entry["accuracy"] as? Number)?.toFloat(),
+                participantEmail = entry["email"] as? String ?: "")
+        }.sortedWith(compareBy({ it.checkedAt }, { it.participantId }))
 
         return Bet(
             id = document.getString("id") ?: document.id,
@@ -89,7 +109,12 @@ class BetDocumentAdapter {
                 document.getString("status"),
                 BetStatus.WAITING
             ),
+            moderatorId = document.getString("moderatorId"),
+            checkIns = arrivals,
+            winnerId = document.getString("winnerId"),
             winnerName = document.getString("winnerName"),
+            approvedBy = document.getString("approvedBy"),
+            creditedIds = (document.get("creditedIds") as? List<*>).orEmpty().filterIsInstance<String>(),
             pointsProcessed =
                 document.getBoolean(FIELD_POINTS_PROCESSED) == true
         )
@@ -133,6 +158,8 @@ class BetDocumentAdapter {
             "endsAtMillis" to bet.endsAt.toEpochMillis(),
             "creatorId" to bet.creatorId,
             "creatorName" to bet.creatorName,
+            "moderatorId" to bet.moderatorId,
+            "declinedParticipantIds" to emptyList<String>(),
             "locationName" to bet.locationName,
             "radiusMeters" to bet.radiusMeters,
             "targetLatitude" to bet.targetLatitude,

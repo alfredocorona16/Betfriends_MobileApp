@@ -446,7 +446,7 @@ private fun ActiveBetsSection(
 private fun ActiveBetRow(
     bet: Bet
 ) {
-    val statusText = when (bet.status) {
+    val statusText = if (bet.isOpen && bet.checkIns.isNotEmpty()) "Por confirmar" else when (bet.status) {
         BetStatus.WAITING -> "Pendiente"
         BetStatus.ACTIVE -> "En juego"
         BetStatus.FINISHED -> "Finalizada"

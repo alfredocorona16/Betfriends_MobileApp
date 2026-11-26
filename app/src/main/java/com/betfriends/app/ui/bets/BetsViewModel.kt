@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.betfriends.app.domain.model.Bet
 import com.betfriends.app.domain.model.BetInvitation
 import com.betfriends.app.domain.model.UserProfile
+import com.betfriends.app.location.DeviceLocation
 import com.betfriends.app.domain.repository.BetRepository
 import com.betfriends.app.domain.repository.RepositorySubscription
 
@@ -19,6 +20,7 @@ class BetsViewModel(
         private set
 
     private var activeUserId: String? = null
+    private val settling = mutableSetOf<String>()
     private var pointsSubscription: RepositorySubscription? = null
     private var betsSubscription: RepositorySubscription? = null
     private var invitationsSubscription: RepositorySubscription? = null
@@ -52,9 +54,10 @@ class BetsViewModel(
         betsSubscription = repository.observeBets(
             userId = user.uid,
             onChanged = { remoteBets ->
-                uiState = uiState.copy(
-                    bets = mergeLocalCheckIns(remoteBets)
-                )
+                if (activeUserId == user.uid) {
+                    uiState = uiState.copy(bets = remoteBets)
+                    remoteBets.filter { it.approvedBy != null && !it.pointsProcessed }.forEach(::syncPoints)
+                }
             },
             onError = ::showMessage
         )
@@ -216,50 +219,46 @@ class BetsViewModel(
         )
     }
 
-    fun updateBet(updatedBet: Bet) {
-        uiState = uiState.copy(
-            bets = uiState.bets.map { currentBet ->
-                if (currentBet.id == updatedBet.id) {
-                    updatedBet
-                } else {
-                    currentBet
-                }
-            }
-        )
+    fun assignModerator(betId: String, moderatorId: String) =
+        perform(betId, "Moderador asignado.") { _, done -> repository.assignModerator(betId, moderatorId, done) }
 
-        repository.updateBetOutcome(
-            bet = updatedBet,
-            onError = ::showMessage
-        )
+    fun submitCheckIn(betId: String, location: DeviceLocation?) =
+        perform(betId, "Llegada registrada. El moderador revisará el resultado.") { uid, done ->
+            repository.submitCheckIn(betId, uid, location, done)
+        }
+
+    fun approveWinner(betId: String, candidate: String) =
+        perform(betId, "Ganador confirmado.") { uid, done -> repository.approveWinner(betId, uid, candidate, done) }
+
+    private fun perform(betId: String, success: String, action: (String, (Result<Unit>) -> Unit) -> Unit) {
+        val uid = activeUserId ?: return
+        if (betId in uiState.processingBets) return
+        uiState = uiState.copy(processingBets = uiState.processingBets + betId, message = null)
+        action(uid) { result ->
+            if (uid == activeUserId) {
+                uiState = uiState.copy(processingBets = uiState.processingBets - betId,
+                    message = if (result.isSuccess) success else
+                        result.exceptionOrNull()?.localizedMessage ?: "No se pudo guardar. Inténtalo de nuevo.")
+            }
+        }
+    }
+
+    fun syncPoints(bet: Bet) {
+        val uid = activeUserId ?: return
+        if (bet.approvedBy == null || bet.pointsProcessed ||
+            (uid != bet.moderatorId && (!bet.isAcceptedCompetitor(uid) || uid in bet.creditedIds))) return
+        val key = "${uid}/${bet.id}"
+        if (!settling.add(key)) return
+        repository.settlePoints(bet, uid) { result ->
+            settling.remove(key)
+            if (result.isFailure && activeUserId == uid) {
+                showMessage("El resultado está guardado. Puedes reintentar la acreditación de puntos.")
+            }
+        }
     }
 
     fun clearMessage() {
         uiState = uiState.copy(message = null)
-    }
-
-    private fun mergeLocalCheckIns(
-        remoteBets: List<Bet>
-    ): List<Bet> {
-        val localBetsById = uiState.bets.associateBy { it.id }
-
-        return remoteBets.map { remoteBet ->
-            val localBet = localBetsById[remoteBet.id]
-
-            if (
-                localBet != null &&
-                localBet.checkIns.isNotEmpty() &&
-                remoteBet.checkIns.isEmpty()
-            ) {
-                remoteBet.copy(
-                    checkIns = localBet.checkIns,
-                    status = localBet.status,
-                    winnerName =
-                        localBet.winnerName ?: remoteBet.winnerName
-                )
-            } else {
-                remoteBet
-            }
-        }
     }
 
     private fun showMessage(message: String) {

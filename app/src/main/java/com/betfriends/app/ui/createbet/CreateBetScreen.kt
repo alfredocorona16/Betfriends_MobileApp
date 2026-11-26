@@ -27,8 +27,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
@@ -46,6 +48,15 @@ import com.betfriends.app.ui.components.DateTimeSelector
 import com.betfriends.app.ui.components.LocationSelector
 import java.time.LocalDateTime
 import java.util.UUID
+
+private val rosterSaver = listSaver<SnapshotStateList<BetParticipant>, String>(
+    save = { members -> members.flatMap { listOf(it.id, it.name, it.email, it.invitationStatus.name) } },
+    restore = { values ->
+        values.chunked(4).map { (uid, name, email, status) ->
+            BetParticipant(uid, name, email, ParticipantInvitationStatus.valueOf(status))
+        }.toMutableStateList()
+    }
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,7 +94,8 @@ fun CreateBetScreen(
         mutableStateOf<String?>(null)
     }
 
-    val participants = remember(currentUser.uid) {
+    var moderatorId by rememberSaveable(currentUser.uid) { mutableStateOf(currentUser.uid) }
+    val participants = rememberSaveable(currentUser.uid, saver = rosterSaver) {
         mutableStateListOf(
             BetParticipant(
                 id = currentUser.uid,
@@ -298,6 +310,7 @@ fun CreateBetScreen(
                 }
             }
 
+            Text("Elige un moderador. Revisará las llegadas y confirmará al ganador.")
             participants.forEachIndexed { index, participant ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -318,9 +331,15 @@ fun CreateBetScreen(
                         )
                     }
 
+                    FilterChip(
+                        selected = moderatorId == participant.id,
+                        onClick = { moderatorId = participant.id },
+                        label = { Text(if (moderatorId == participant.id) "Moderador" else "Moderar") }
+                    )
                     if (participant.id != currentUser.uid) {
                         TextButton(
                             onClick = {
+                                if (moderatorId == participant.id) moderatorId = currentUser.uid
                                 participants.remove(participant)
                                 errorMessage = null
                             }
@@ -332,7 +351,7 @@ fun CreateBetScreen(
             }
 
             Text(
-                text = "Al terminar la apuesta, cada participante gana " +
+                text = "Al confirmar el resultado, cada competidor que aceptó gana " +
                         "${PointsRules.PARTICIPATION_POINTS} puntos y " +
                         "quien gane recibe ${PointsRules.VICTORY_BONUS_POINTS} más.",
                 color = MaterialTheme.colorScheme.primary,
@@ -440,6 +459,7 @@ fun CreateBetScreen(
                             targetLongitude = targetLongitude,
                             targetAccuracyMeters = targetAccuracyMeters,
                             participants = participants.toList(),
+                            moderatorId = moderatorId,
                             creator = currentUser
                         )
                     }.onSuccess(onBetCreated)
@@ -475,6 +495,7 @@ private fun validateAndCreateBet(
     targetLongitude: Double?,
     targetAccuracyMeters: Float?,
     participants: List<BetParticipant>,
+    moderatorId: String,
     creator: UserProfile
 ): Bet {
     require(title.isNotBlank()) {
@@ -491,8 +512,8 @@ private fun validateAndCreateBet(
     require(validEndDateTime.isAfter(validStartDateTime)) {
         "La fecha límite debe ser posterior al inicio."
     }
-    require(participants.size >= 2) {
-        "Invita al menos a otro usuario de Challenge Friends."
+    require(participants.any { it.id == moderatorId } && participants.size >= 3) {
+        "El reto necesita un moderador y al menos dos competidores invitados."
     }
     require(participants.size <= 10) {
         "Puedes agregar un máximo de 10 participantes."
@@ -553,6 +574,7 @@ private fun validateAndCreateBet(
         targetLongitude = validTargetLongitude,
         targetAccuracyMeters = validTargetAccuracyMeters,
         participants = participants,
+        moderatorId = moderatorId,
         status = BetStatus.WAITING
     )
 }

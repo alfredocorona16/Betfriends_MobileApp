@@ -4,6 +4,7 @@ import com.betfriends.app.domain.model.Bet
 import com.betfriends.app.domain.model.BetInvitation
 import com.betfriends.app.domain.model.PublicUserProfile
 import com.betfriends.app.domain.model.UserProfile
+import com.betfriends.app.location.DeviceLocation
 
 fun interface RepositorySubscription {
     fun cancel()
@@ -60,8 +61,8 @@ interface BetRepository {
         onError: (String) -> Unit
     )
 
-    fun updateBetOutcome(
-        bet: Bet,
-        onError: (String) -> Unit
-    )
+    fun assignModerator(betId: String, moderatorId: String, done: (Result<Unit>) -> Unit)
+    fun submitCheckIn(betId: String, uid: String, location: DeviceLocation?, done: (Result<Unit>) -> Unit)
+    fun approveWinner(betId: String, actor: String, candidate: String, done: (Result<Unit>) -> Unit)
+    fun settlePoints(bet: Bet, actor: String, done: (Result<Unit>) -> Unit)
 }

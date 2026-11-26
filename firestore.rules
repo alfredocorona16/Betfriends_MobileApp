@@ -1,4 +1,3 @@
-
 rules_version = '2';
 
 service cloud.firestore {
@@ -11,6 +10,39 @@ service cloud.firestore {
     function isOwner(userId) {
       return signedIn()
         && request.auth.uid == userId;
+    }
+
+    function betPath(id) {
+      return /databases/$(database)/documents/apuestas/$(id);
+    }
+    function userPath(uid) {
+      return /databases/$(database)/documents/usuarios/$(uid);
+    }
+    function receiptPath(id, uid) {
+      let key = id + '_' + uid;
+      return /databases/$(database)/documents/movimientosPuntos/$(key);
+    }
+    function changedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+    function openBet(b) {
+      return b.status in ['WAITING', 'ACTIVE'];
+    }
+    function pendingMember(b, uid) {
+      return uid in b.participantIds && !(uid in b.acceptedParticipantIds)
+        && !(uid in b.get('declinedParticipantIds', []));
+    }
+    function eligibleForCredit(b, uid) {
+      return b.status == 'FINISHED' && b.approvedBy == b.moderatorId
+        && (request.auth.uid == b.moderatorId || request.auth.uid == uid)
+        && uid in b.acceptedParticipantIds && uid != b.moderatorId
+        && !(uid in b.get('creditedIds', []));
+    }
+    function points(b, uid) { return b.winnerId == uid ? 60 : 10; }
+    function creditTransition(id, uid) {
+      let b = get(betPath(id)).data;
+      return eligibleForCredit(b, uid)
+        && getAfter(betPath(id)).data.creditedIds == b.get('creditedIds', []).concat([uid]);
     }
 
     // Perfiles privados y puntos
@@ -34,40 +66,149 @@ service cloud.firestore {
       allow update: if isOwner(userId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nombre'])
         && validName(request.resource.data.nombre);
+      allow update: if signedIn() && changedOnly(['puntos', 'ultimoRetoBF'])
+        && request.resource.data.ultimoRetoBF is string
+        && creditTransition(request.resource.data.ultimoRetoBF, userId)
+        && request.resource.data.puntos == resource.data.get('puntos', 0)
+          + points(get(betPath(request.resource.data.ultimoRetoBF)).data, userId);
     }
 
-    // Búsqueda de perfiles públicos
     match /perfilesPublicos/{userId} {
+      function validProfile(d) {
+        return d.uid == userId && d.correo == request.auth.token.email
+          && d.correoBusqueda == d.correo.lower() && d.nombre == get(userPath(userId)).data.nombre
+          && d.actualizadoEn is int;
+      }
       allow read: if signedIn();
-
-      // Evitar suplantaciones y cambios arbitrarios.
-      allow create, update, delete: if false;
+      allow create: if isOwner(userId) && validProfile(request.resource.data)
+        && request.resource.data.keys().hasOnly(['uid', 'nombre', 'correo', 'correoBusqueda', 'actualizadoEn']);
+      allow update: if isOwner(userId) && validProfile(request.resource.data)
+        && changedOnly(['uid', 'nombre', 'correo', 'correoBusqueda', 'actualizadoEn']);
     }
 
-    // Apuestas
     match /apuestas/{betId} {
-      allow read: if signedIn()
-        && request.auth.uid in resource.data.participantIds;
-
-      // Las operaciones sobre apuestas y botes
-      // requieren validación de integridad.
-      allow create, update, delete: if false;
+      function validMember(b, i) {
+        let p = b.participants[i];
+        return p.id is string && p.id.size() > 0 && p.id == b.participantIds[i]
+          && p.name is string && p.name.size() > 0 && p.email is string
+          && p.invitationStatus == (p.id == b.creatorId ? 'ACCEPTED' : 'PENDING');
+      }
+      function validRoster(b) {
+        let n = b.participantIds.size();
+        return n >= 3 && n <= 10 && b.participantIds.toSet().size() == n && b.participants.size() == n
+          && b.creatorId in b.participantIds && b.moderatorId in b.participantIds
+          && b.acceptedParticipantIds == [b.creatorId] && b.declinedParticipantIds == []
+          && validMember(b, 0) && validMember(b, 1) && validMember(b, 2)
+          && (n <= 3 || validMember(b, 3)) && (n <= 4 || validMember(b, 4))
+          && (n <= 5 || validMember(b, 5)) && (n <= 6 || validMember(b, 6))
+          && (n <= 7 || validMember(b, 7)) && (n <= 8 || validMember(b, 8))
+          && (n <= 9 || validMember(b, 9));
+      }
+      function validNewBet(b) {
+        return b.creatorId == request.auth.uid && b.creatorName == get(userPath(b.creatorId)).data.nombre
+          && b.id == betId && betId.matches('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
+          && b.title is string && b.title.size() > 0
+          && b.keys().hasOnly(['id','title','description','type','startsAtMillis','endsAtMillis',
+            'creatorId','creatorName','locationName','radiusMeters','targetLatitude','targetLongitude',
+            'targetAccuracyMeters','participants','participantIds','acceptedParticipantIds','declinedParticipantIds',
+            'moderatorId','status','winnerName','pointsProcessed','createdAtMillis','updatedAtMillis'])
+          && b.startsAtMillis is int && b.endsAtMillis is int && b.startsAtMillis < b.endsAtMillis
+          && (b.type == 'TIME' || (b.type == 'LOCATION' && b.radiusMeters is int
+            && b.radiusMeters >= 20 && b.radiusMeters <= 500 && b.targetLatitude >= -90 && b.targetLatitude <= 90
+            && b.targetLongitude >= -180 && b.targetLongitude <= 180))
+          && b.status == 'WAITING' && b.winnerName == null && b.pointsProcessed == false && validRoster(b);
+      }
+      function assign(b, a) {
+        return changedOnly(['moderatorId']) && openBet(b) && b.creatorId == request.auth.uid
+          && (b.get('moderatorId', null) == null || b.moderatorId in b.get('declinedParticipantIds', []))
+          && b.get('checkInsByUid', {}).size() == 0 && a.moderatorId in b.participantIds
+          && !(a.moderatorId in b.get('declinedParticipantIds', []));
+      }
+      function reply(b, a, uid) {
+        let key = betId + '_' + uid;
+        let invitation = /databases/$(database)/documents/invitaciones/$(key);
+        return openBet(b) && pendingMember(b, uid) && get(invitation).data.status == 'PENDING'
+          && ((changedOnly(['acceptedParticipantIds']) && a.acceptedParticipantIds == b.acceptedParticipantIds.concat([uid])
+              && getAfter(invitation).data.status == 'ACCEPTED')
+            || (changedOnly(['declinedParticipantIds']) && a.declinedParticipantIds == b.get('declinedParticipantIds', []).concat([uid])
+              && getAfter(invitation).data.status == 'DECLINED'));
+      }
+      function validEvidence(b, e) {
+        return e.name == get(userPath(request.auth.uid)).data.nombre && e.email == get(userPath(request.auth.uid)).data.correo
+          && e.at == request.time && request.time.toMillis() >= b.startsAtMillis && request.time.toMillis() <= b.endsAtMillis
+          && ((b.type == 'TIME' && e.keys().hasOnly(['name','email','at']))
+            || (b.type == 'LOCATION' && e.keys().hasOnly(['name','email','at','position','accuracy'])
+              && e.position is latlng && e.accuracy is number && e.accuracy >= 0 && e.accuracy <= b.radiusMeters
+              && e.position.distance(latlng.value(b.targetLatitude, b.targetLongitude)) <= b.radiusMeters));
+      }
+      function submit(b, a, uid) {
+        let old = b.get('checkInsByUid', {});
+        return changedOnly(['checkInsByUid']) && openBet(b)
+          && b.moderatorId in b.acceptedParticipantIds && uid in b.acceptedParticipantIds && uid != b.moderatorId
+          && !(uid in old) && uid in a.checkInsByUid
+          && a.checkInsByUid.diff(old).affectedKeys().hasOnly([uid]) && validEvidence(b, a.checkInsByUid[uid]);
+      }
+      function approve(b, a, uid) {
+        return changedOnly(['status','winnerId','winnerName','approvedBy','approvedAt']) && openBet(b)
+          && uid == b.moderatorId && uid in b.acceptedParticipantIds && a.status == 'FINISHED'
+          && a.approvedBy == uid && a.approvedAt == request.time && a.winnerId != uid
+          && a.winnerId in b.acceptedParticipantIds && a.winnerId in b.get('checkInsByUid', {})
+          && a.winnerName == b.checkInsByUid[a.winnerId].name;
+      }
+      function credit(b, a) {
+        let old = b.get('creditedIds', []);
+        let uid = a.creditedIds[old.size()];
+        return eligibleForCredit(b, uid) && a.creditedIds == old.concat([uid])
+          && a.pointsProcessed == (a.creditedIds.toSet() == b.acceptedParticipantIds.toSet().difference([b.moderatorId].toSet()))
+          && !exists(receiptPath(betId, uid)) && existsAfter(receiptPath(betId, uid));
+      }
+      allow read: if signedIn() && request.auth.uid in resource.data.participantIds;
+      allow create: if signedIn() && validNewBet(request.resource.data);
+      allow update: if signedIn() && request.auth.uid in resource.data.participantIds && (
+          assign(resource.data, request.resource.data)
+          || ((changedOnly(['acceptedParticipantIds']) || changedOnly(['declinedParticipantIds']))
+            && reply(resource.data, request.resource.data, request.auth.uid))
+          || submit(resource.data, request.resource.data, request.auth.uid)
+          || approve(resource.data, request.resource.data, request.auth.uid)
+          || (changedOnly(['creditedIds','pointsProcessed']) && credit(resource.data, request.resource.data)));
     }
 
-    // Invitaciones
     match /invitaciones/{invitationId} {
-      allow read: if signedIn()
-        && (
-          resource.data.inviterId == request.auth.uid
-          || resource.data.inviteeId == request.auth.uid
-        );
-
-      allow create, update, delete: if false;
+      function validInvite(i) {
+        let b = getAfter(betPath(i.betId)).data;
+        return i.keys().hasOnly(['id','betId','betTitle','inviterId','inviterName','inviteeId','inviteeName',
+          'status','createdAtMillis','updatedAtMillis']) && i.id == invitationId
+          && invitationId == i.betId + '_' + i.inviteeId && i.inviterId == request.auth.uid && b.creatorId == i.inviterId
+          && i.inviteeId != i.inviterId && pendingMember(b, i.inviteeId) && openBet(b)
+          && i.status == 'PENDING' && i.betTitle == b.title && i.inviterName == b.creatorName;
+      }
+      function validReply(i, a) {
+        let b = get(betPath(i.betId)).data;
+        let after = getAfter(betPath(i.betId)).data;
+        return i.inviteeId == request.auth.uid && i.status == 'PENDING' && openBet(b) && pendingMember(b, i.inviteeId)
+          && changedOnly(['status','updatedAtMillis']) && a.updatedAtMillis is int
+          && ((a.status == 'ACCEPTED' && i.inviteeId in after.acceptedParticipantIds)
+            || (a.status == 'DECLINED' && i.inviteeId in after.declinedParticipantIds));
+      }
+      allow read: if signedIn() && (request.auth.uid == resource.data.inviterId || request.auth.uid == resource.data.inviteeId);
+      allow create: if signedIn() && validInvite(request.resource.data);
+      allow update: if signedIn() && validReply(resource.data, request.resource.data);
     }
 
-    // Cualquier otra ruta queda bloqueada.
-    match /{document=**} {
-      allow read, write: if false;
+    match /movimientosPuntos/{movementId} {
+      function validMovement(m) {
+        let b = get(betPath(m.betId)).data;
+        let profile = userPath(m.userId);
+        let amount = points(b, m.userId);
+        return m.keys().hasOnly(['id','userId','betId','betTitle','points','wasWinner','createdAtMillis'])
+          && m.id == movementId && movementId == m.betId + '_' + m.userId && m.betTitle == b.title
+          && m.wasWinner == (b.winnerId == m.userId) && m.points == amount && m.createdAtMillis == b.approvedAt.toMillis()
+          && creditTransition(m.betId, m.userId)
+          && getAfter(profile).data.ultimoRetoBF == m.betId
+          && getAfter(profile).data.puntos == get(profile).data.get('puntos', 0) + amount;
+      }
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && validMovement(request.resource.data);
     }
   }
 }

@@ -24,13 +24,26 @@ data class Bet(
     val status: BetStatus = BetStatus.WAITING,
     val checkIns: List<BetCheckIn> = emptyList(),
     val winnerName: String? = null,
-    val pointsProcessed: Boolean = false
+    val pointsProcessed: Boolean = false,
+    val moderatorId: String? = null,
+    val winnerId: String? = null,
+    val approvedBy: String? = null,
+    val creditedIds: List<String> = emptyList()
 ) {
     val acceptedParticipants: List<BetParticipant>
         get() = participants.filter {
             it.invitationStatus ==
                     ParticipantInvitationStatus.ACCEPTED
         }
+    val isOpen: Boolean get() = status == BetStatus.WAITING || status == BetStatus.ACTIVE
+
+    val moderator: BetParticipant? get() = participants.firstOrNull { it.id == moderatorId }
+
+    val needsModerator: Boolean get() = moderator == null ||
+        moderator?.invitationStatus == ParticipantInvitationStatus.DECLINED
+
+    fun isAcceptedCompetitor(uid: String): Boolean =
+        uid != moderatorId && acceptedParticipants.any { it.id == uid }
 }
 
 enum class BetType {

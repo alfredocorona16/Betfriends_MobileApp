@@ -8,6 +8,7 @@ data class BetsUiState(
     val bets: List<Bet> = emptyList(),
     val invitations: List<BetInvitation> = emptyList(),
     val currentPoints: Int? = null,
+    val processingBets: Set<String> = emptySet(),
     val searchResult: PublicUserProfile? = null,
     val isSearchingUser: Boolean = false,
     val isCreatingBet: Boolean = false,
