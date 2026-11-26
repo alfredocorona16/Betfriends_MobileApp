@@ -11,7 +11,14 @@ import com.betfriends.app.domain.model.PublicUserProfile
 import com.betfriends.app.domain.model.UserProfile
 import com.betfriends.app.domain.repository.BetRepository
 import com.betfriends.app.domain.repository.RepositorySubscription
+import com.betfriends.app.domain.rules.BetRules
 import com.betfriends.app.domain.rules.PointsRules
+import com.betfriends.app.location.DeviceLocation
+import com.google.android.gms.tasks.Task
+import com.google.firebase.firestore.GeoPoint
+import com.google.firebase.firestore.Source
+import com.google.firebase.firestore.FieldPath
+import java.time.LocalDateTime
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -205,8 +212,8 @@ class FirebaseBetRepository(
         val participants = listOf(creatorParticipant) +
             invitedParticipants
 
-        if (participants.size < 2) {
-            onError("Invita al menos a otro usuario.")
+        if (participants.size !in 3..10 || participants.none { it.id == bet.moderatorId }) {
+            onError("Elige un moderador e invita al menos a dos competidores.")
             return
         }
 
@@ -301,7 +308,6 @@ class FirebaseBetRepository(
         respondToInvitation(
             invitation = invitation,
             currentUserId = currentUserId,
-            newStatus = ParticipantInvitationStatus.ACCEPTED,
             invitationStatus = InvitationStatus.ACCEPTED,
             onSuccess = onSuccess,
             onError = onError
@@ -317,7 +323,6 @@ class FirebaseBetRepository(
         respondToInvitation(
             invitation = invitation,
             currentUserId = currentUserId,
-            newStatus = ParticipantInvitationStatus.DECLINED,
             invitationStatus = InvitationStatus.DECLINED,
             onSuccess = onSuccess,
             onError = onError
@@ -327,7 +332,6 @@ class FirebaseBetRepository(
     private fun respondToInvitation(
         invitation: BetInvitation,
         currentUserId: String,
-        newStatus: ParticipantInvitationStatus,
         invitationStatus: InvitationStatus,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
@@ -353,31 +357,11 @@ class FirebaseBetRepository(
                 currentUserId = currentUserId
             )
 
-            val updatedParticipants = updateParticipantStatus(
-                betSnapshot = betSnapshot,
-                participantId = currentUserId,
-                newStatus = newStatus
-            )
-
+            require(adapter.toBet(betSnapshot)?.isOpen == true) { "El reto ya está cerrado." }
             val now = System.currentTimeMillis()
-
-            val betUpdates = mutableMapOf<String, Any>(
-                "participants" to updatedParticipants,
-                "updatedAtMillis" to now
-            )
-
-            if (invitationStatus == InvitationStatus.ACCEPTED) {
-                val acceptedIds = (
-                        betSnapshot.get("acceptedParticipantIds") as? List<*>
-                        )
-                    .orEmpty()
-                    .filterIsInstance<String>()
-                    .toMutableSet()
-                    .apply { add(currentUserId) }
-                    .toList()
-
-                betUpdates["acceptedParticipantIds"] = acceptedIds
-            }
+            val idsField = if (invitationStatus == InvitationStatus.ACCEPTED)
+                "acceptedParticipantIds" else "declinedParticipantIds"
+            val betUpdates = mapOf(idsField to FieldValue.arrayUnion(currentUserId))
 
             transaction.update(
                 invitationReference,
@@ -408,138 +392,121 @@ class FirebaseBetRepository(
         }
     }
 
-    override fun updateBetOutcome(
-        bet: Bet,
-        onError: (String) -> Unit
-    ) {
-        val betReference = firestore.collection(BETS_COLLECTION)
-            .document(bet.id)
+    override fun assignModerator(betId: String, moderatorId: String, done: (Result<Unit>) -> Unit) {
+        firestore.collection(BETS_COLLECTION).document(betId)
+            .update("moderatorId", moderatorId).report(done)
+    }
 
-        firestore.runTransaction { transaction ->
-            val betSnapshot = transaction.get(betReference)
-
-            if (!betSnapshot.exists()) {
-                error(BET_NOT_FOUND_MESSAGE)
-            }
-
-            val remoteBet = adapter.toBet(betSnapshot)
-                ?: error("La apuesta tiene datos incompletos.")
-
-            val now = System.currentTimeMillis()
-
-            val updates = hashMapOf<String, Any>(
-                "updatedAtMillis" to now
-            )
-
-            // El primer resultado registrado es el definitivo.
-            val resultBet = if (remoteBet.status == BetStatus.FINISHED) {
-                remoteBet
-            } else {
-                updates["status"] = bet.status.name
-                bet.winnerName?.let {
-                    updates["winnerName"] = it
-                }
-
-                remoteBet.copy(
-                    status = bet.status,
-                    winnerName = bet.winnerName
+    override fun submitCheckIn(betId: String, uid: String, location: DeviceLocation?, done: (Result<Unit>) -> Unit) {
+        val ref = firestore.collection(BETS_COLLECTION).document(betId)
+        firestore.runTransaction { tx ->
+            val bet = adapter.toBet(tx.get(ref)) ?: error(BET_NOT_FOUND_MESSAGE)
+            if (bet.checkIns.none { it.participantId == uid }) {
+                val arrival = BetRules.checkIn(bet, uid, LocalDateTime.now(), location)
+                val profile = tx.get(firestore.collection(USERS_COLLECTION).document(uid))
+                val data = mutableMapOf<String, Any>(
+                    "name" to requireNotNull(profile.getString("nombre")) { "Completa tu perfil." },
+                    "email" to requireNotNull(profile.getString("correo")) { "Completa tu perfil." },
+                    "at" to FieldValue.serverTimestamp()
                 )
-            }
-
-            // Evita procesar los puntos más de una vez.
-            if (!remoteBet.pointsProcessed) {
-                val awards = PointsRules.calculate(resultBet)
-
-                if (awards.isNotEmpty()) {
-                    awards.forEach { award ->
-                        val userReference = firestore
-                            .collection(USERS_COLLECTION)
-                            .document(award.userId)
-
-                        val movementReference = firestore
-                            .collection(POINTS_COLLECTION)
-                            .document("${bet.id}_${award.userId}")
-
-                        transaction.update(
-                            userReference,
-                            FIELD_POINTS,
-                            FieldValue.increment(award.points.toLong())
-                        )
-
-                        transaction.set(
-                            movementReference,
-                            mapOf(
-                                "id" to movementReference.id,
-                                "userId" to award.userId,
-                                "betId" to bet.id,
-                                "betTitle" to resultBet.title,
-                                "points" to award.points,
-                                "wasWinner" to award.wasWinner,
-                                "createdAtMillis" to now
-                            )
-                        )
-                    }
-
-                    updates[FIELD_POINTS_PROCESSED] = true
+                if (arrival.latitude != null && arrival.longitude != null) {
+                    data["position"] = GeoPoint(arrival.latitude, arrival.longitude)
+                    data["accuracy"] = requireNotNull(arrival.accuracyMeters).toDouble()
                 }
+                tx.update(ref, FieldPath.of("checkInsByUid", uid), data)
             }
+            Unit
+        }.reportVerified(ref, done) { saved -> saved.checkIns.any { it.participantId == uid } }
+    }
 
-            transaction.update(betReference, updates)
-        }.addOnFailureListener { exception ->
-            onError(
-                exception.message
-                    ?: "No se pudo actualizar la apuesta."
-            )
+    override fun approveWinner(betId: String, actor: String, candidate: String, done: (Result<Unit>) -> Unit) {
+        val ref = firestore.collection(BETS_COLLECTION).document(betId)
+        firestore.runTransaction { tx ->
+            val bet = adapter.toBet(tx.get(ref)) ?: error(BET_NOT_FOUND_MESSAGE)
+            if (bet.status != BetStatus.FINISHED || bet.winnerId != candidate || bet.approvedBy != actor) {
+                BetRules.requireApproval(bet, actor, candidate)
+                tx.update(ref, mapOf(
+                    "status" to BetStatus.FINISHED.name,
+                    "winnerId" to candidate,
+                    "winnerName" to bet.checkIns.first { it.participantId == candidate }.participantName,
+                    "approvedBy" to actor,
+                    "approvedAt" to FieldValue.serverTimestamp()
+                ))
+            }
+            Unit
+        }.reportVerified(ref, done) { saved ->
+            saved.status == BetStatus.FINISHED && saved.approvedBy == actor && saved.winnerId == candidate
         }
     }
 
-    /**
-     * Actualiza el estado de invitación de un participante
-     * conservando sus demás datos, incluido su rol.
-     */
-    private fun updateParticipantStatus(
-        betSnapshot: DocumentSnapshot,
-        participantId: String,
-        newStatus: ParticipantInvitationStatus
-    ): List<Map<String, Any>> {
-        val rawParticipants =
-            (betSnapshot.get("participants") as? List<*>)
-                .orEmpty()
+    override fun settlePoints(bet: Bet, actor: String, done: (Result<Unit>) -> Unit) {
+        val recipients = PointsRules.calculate(bet).filter {
+            it.userId !in bet.creditedIds && (actor == bet.moderatorId || actor == it.userId)
+        }
+        val ref = firestore.collection(BETS_COLLECTION).document(bet.id)
 
-        var participantWasFound = false
-
-        val updatedParticipants = rawParticipants.mapNotNull { item ->
-            val rawMap = item as? Map<*, *>
-                ?: return@mapNotNull null
-
-            val id = rawMap["id"] as? String
-                ?: return@mapNotNull null
-
-            val status = if (id == participantId) {
-                participantWasFound = true
-                newStatus.name
-            } else {
-                rawMap["invitationStatus"] as? String
-                    ?: ParticipantInvitationStatus.PENDING.name
+        // Una transacción por beneficiario mantiene cada saldo unido a su comprobante.
+        // Si se interrumpe el reparto, el siguiente intento retoma a quienes faltan.
+        fun credit(index: Int) {
+            val award = recipients.getOrNull(index) ?: return done(Result.success(Unit))
+            var observedCount = -1
+            firestore.runTransaction { tx ->
+                val snap = tx.get(ref)
+                val current = adapter.toBet(snap) ?: error(BET_NOT_FOUND_MESSAGE)
+                require(current.status == BetStatus.FINISHED && current.approvedBy == current.moderatorId &&
+                    current.winnerId != null) { "El resultado aún no está confirmado." }
+                observedCount = current.creditedIds.size
+                if (award.userId !in current.creditedIds) {
+                    val awards = PointsRules.calculate(current)
+                    val item = awards.first { it.userId == award.userId }
+                    val credited = current.creditedIds + item.userId
+                    val movement = firestore.collection(POINTS_COLLECTION).document("${bet.id}_${item.userId}")
+                    val profile = firestore.collection(USERS_COLLECTION).document(item.userId)
+                    tx.update(profile, mapOf(
+                        FIELD_POINTS to FieldValue.increment(item.points.toLong()),
+                        "ultimoRetoBF" to bet.id
+                    ))
+                    tx.set(movement, mapOf(
+                        "id" to movement.id, "userId" to item.userId, "betId" to bet.id,
+                        "betTitle" to current.title, "points" to item.points, "wasWinner" to item.wasWinner,
+                        "createdAtMillis" to requireNotNull(snap.getTimestamp("approvedAt")).toDate().time
+                    ))
+                    tx.update(ref, mapOf("creditedIds" to credited, FIELD_POINTS_PROCESSED to
+                        awards.all { it.userId in credited }))
+                }
+                Unit
+            }.addOnSuccessListener { credit(index + 1) }.addOnFailureListener { error ->
+                // Una escritura concurrente puede confirmarse antes de que se evalúen las reglas.
+                ref.get(Source.SERVER).addOnSuccessListener { snapshot ->
+                    val paid = (snapshot.get("creditedIds") as? List<*>).orEmpty()
+                    when {
+                        award.userId in paid -> credit(index + 1)
+                        observedCount >= 0 && paid.size > observedCount -> credit(index)
+                        else -> done(Result.failure(error))
+                    }
+                }.addOnFailureListener { done(Result.failure(error)) }
             }
-
-            val role = rawMap["role"] as? String
-                ?: "COMPETITOR"
-
-            mapOf(
-                "id" to id,
-                "name" to (rawMap["name"] as? String ?: "Usuario"),
-                "email" to (rawMap["email"] as? String ?: ""),
-                "invitationStatus" to status,
-                "role" to role
-            )
         }
+        credit(0)
+    }
 
-        if (!participantWasFound) {
-            error("El usuario no pertenece a esta apuesta.")
+    private fun Task<*>.reportVerified(
+        ref: DocumentReference,
+        done: (Result<Unit>) -> Unit,
+        isSaved: (Bet) -> Boolean
+    ) {
+        addOnSuccessListener { done(Result.success(Unit)) }
+        addOnFailureListener { error ->
+            ref.get(Source.SERVER).addOnSuccessListener { snapshot ->
+                val stored = adapter.toBet(snapshot)
+                done(if (stored != null && isSaved(stored)) Result.success(Unit) else Result.failure(error))
+            }.addOnFailureListener { done(Result.failure(error)) }
         }
+    }
 
-        return updatedParticipants
+    private fun Task<*>.report(done: (Result<Unit>) -> Unit) {
+        addOnSuccessListener { done(Result.success(Unit)) }
+        addOnFailureListener { done(Result.failure(it)) }
     }
 
     private fun normalizeEmail(email: String): String {

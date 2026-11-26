@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test:rules": "node --test tests/firestore.rules.test.cjs"
+    "test:rules": "node --test tests/firestore.rules.test.cjs tests/moderation.rules.test.cjs"
   },
   "repository": {
     "type": "git",

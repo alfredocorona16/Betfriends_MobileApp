@@ -30,17 +30,14 @@ object PointsRules {
             return emptyList()
         }
 
-        val winnerName = bet.winnerName?.trim()
+        val competitors = bet.acceptedParticipants.filter { it.id != bet.moderatorId }
+        // Los resultados históricos pueden tener solo el nombre del ganador.
+        val winnerId = bet.winnerId ?: competitors.firstOrNull {
+            it.name.equals(bet.winnerName?.trim(), ignoreCase = true)
+        }?.id ?: return emptyList()
+        if (competitors.none { it.id == winnerId }) return emptyList()
 
-        if (winnerName.isNullOrBlank()) {
-            return emptyList()
-        }
-
-        val winnerId = bet.acceptedParticipants
-            .firstOrNull { it.name.equals(winnerName, ignoreCase = true) }
-            ?.id
-
-        return bet.acceptedParticipants.map { participant ->
+        return competitors.map { participant ->
             val isWinner = participant.id == winnerId
 
             PointsAward(

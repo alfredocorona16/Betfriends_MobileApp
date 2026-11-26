@@ -31,10 +31,18 @@ import com.betfriends.app.domain.model.BetStatus
 import com.betfriends.app.domain.model.BetType
 import com.betfriends.app.domain.model.ParticipantInvitationStatus
 import com.betfriends.app.ui.components.BetCheckInSection
+import com.betfriends.app.location.DeviceLocation
 import java.time.format.DateTimeFormatter
 
 private val dateTimeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+
+class BetActions(
+    val checkIn: (String, DeviceLocation?) -> Unit,
+    val assign: (String, String) -> Unit,
+    val approve: (String, String) -> Unit,
+    val syncPoints: (Bet) -> Unit
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,15 +54,18 @@ fun MyBetsScreen(
     message: String?,
     onAcceptInvitation: (BetInvitation) -> Unit,
     onDeclineInvitation: (BetInvitation) -> Unit,
-    onBetUpdated: (Bet) -> Unit,
+    actions: BetActions,
+    processingBets: Set<String>,
     onBack: () -> Unit
 ) {
     val visibleBets = bets.filter { bet ->
-        bet.creatorId == currentUserId ||
-                bet.participants.firstOrNull {
-                    it.id == currentUserId
-                }?.invitationStatus !=
-                ParticipantInvitationStatus.DECLINED
+        bet.creatorId == currentUserId || bet.participants.any {
+            it.id == currentUserId && it.invitationStatus != ParticipantInvitationStatus.DECLINED
+        }
+    }
+    val betsById = visibleBets.associateBy { it.id }
+    val pendingInvitations = invitations.filter {
+        it.inviteeId == currentUserId && betsById[it.betId]?.isOpen != false
     }
 
     Scaffold(
@@ -69,7 +80,7 @@ fun MyBetsScreen(
             )
         }
     ) { innerPadding ->
-        if (visibleBets.isEmpty() && invitations.isEmpty()) {
+        if (visibleBets.isEmpty() && pendingInvitations.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -90,7 +101,7 @@ fun MyBetsScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (invitations.isNotEmpty()) {
+                if (pendingInvitations.isNotEmpty()) {
                     item(key = "invitations-title") {
                         Text(
                             text = "Invitaciones pendientes",
@@ -99,11 +110,12 @@ fun MyBetsScreen(
                     }
 
                     items(
-                        items = invitations,
+                        items = pendingInvitations,
                         key = { "invitation-${it.id}" }
                     ) { invitation ->
                         InvitationCard(
                             invitation = invitation,
+                            moderatorId = betsById[invitation.betId]?.moderatorId,
                             isProcessing =
                                 processingInvitationId == invitation.id,
                             onAccept = {
@@ -142,7 +154,8 @@ fun MyBetsScreen(
                         BetCard(
                             bet = bet,
                             currentUserId = currentUserId,
-                            onBetUpdated = onBetUpdated
+                            actions = actions,
+                            busy = bet.id in processingBets
                         )
                     }
                 }
@@ -154,6 +167,7 @@ fun MyBetsScreen(
 @Composable
 private fun InvitationCard(
     invitation: BetInvitation,
+    moderatorId: String?,
     isProcessing: Boolean,
     onAccept: () -> Unit,
     onDecline: () -> Unit
@@ -172,8 +186,11 @@ private fun InvitationCard(
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
-                text = "Participar da ${PointsRules.PARTICIPATION_POINTS} puntos; " +
-                        "ganar suma ${PointsRules.VICTORY_BONUS_POINTS} más.",
+                text = when (moderatorId) {
+                    invitation.inviteeId -> "Te invitan como moderador para confirmar al ganador."
+                    null -> "Consulta el reto para ver el rol asignado."
+                    else -> "Te invitan como competidor. Registra tu propia llegada."
+                },
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.titleSmall
             )
@@ -206,7 +223,8 @@ private fun InvitationCard(
 private fun BetCard(
     bet: Bet,
     currentUserId: String,
-    onBetUpdated: (Bet) -> Unit
+    actions: BetActions,
+    busy: Boolean
 ) {
     val currentParticipant = bet.participants.firstOrNull {
         it.id == currentUserId
@@ -265,7 +283,8 @@ private fun BetCard(
                     }
 
                     Text(
-                        text = "• ${participant.name}: $statusLabel",
+                        text = if (participant.id == bet.moderatorId) "${participant.name} · Moderador · $statusLabel"
+                            else "${participant.name} · $statusLabel",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -306,7 +325,7 @@ private fun BetCard(
             }
 
             Text(
-                text = when (bet.status) {
+                text = if (bet.isOpen && bet.checkIns.isNotEmpty()) "Pendiente de confirmación" else when (bet.status) {
                     BetStatus.WAITING -> "Estado: Pendiente"
                     BetStatus.ACTIVE -> "Estado: En juego"
                     BetStatus.FINISHED -> "Estado: Finalizada"
@@ -325,25 +344,10 @@ private fun BetCard(
                 style = MaterialTheme.typography.labelLarge
             )
 
-            when {
-                currentParticipant?.invitationStatus ==
-                        ParticipantInvitationStatus.PENDING -> {
-                    Text(
-                        text = "Acepta la invitación para participar y hacer check-in.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                currentParticipant?.invitationStatus ==
-                        ParticipantInvitationStatus.ACCEPTED &&
-                        bet.status != BetStatus.CANCELLED -> {
-                    BetCheckInSection(
-                        bet = bet,
-                        onBetUpdated = onBetUpdated,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                    )
-                }
+            if (currentParticipant?.invitationStatus == ParticipantInvitationStatus.PENDING && bet.isOpen) {
+                Text("Acepta la invitación para ejercer tu rol.")
+            } else if (!bet.isOpen || currentParticipant?.invitationStatus == ParticipantInvitationStatus.ACCEPTED) {
+                BetCheckInSection(bet, currentUserId, busy, actions)
             }
         }
     }

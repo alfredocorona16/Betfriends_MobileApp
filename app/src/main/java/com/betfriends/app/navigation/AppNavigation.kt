@@ -21,6 +21,7 @@ import com.betfriends.app.ui.auth.RegisterScreen
 import com.betfriends.app.ui.auth.SplashScreen
 import com.betfriends.app.ui.bets.BetsViewModel
 import com.betfriends.app.ui.bets.BetsViewModelFactory
+import com.betfriends.app.ui.bets.BetActions
 import com.betfriends.app.ui.bets.MyBetsScreen
 import com.betfriends.app.ui.createbet.CreateBetScreen
 import com.betfriends.app.ui.profile.EditProfileScreen
@@ -271,7 +272,9 @@ fun BetFriendsApp() {
                             betsViewModel::acceptInvitation,
                         onDeclineInvitation =
                             betsViewModel::declineInvitation,
-                        onBetUpdated = betsViewModel::updateBet,
+                        actions = BetActions(betsViewModel::submitCheckIn, betsViewModel::assignModerator,
+                            betsViewModel::approveWinner, betsViewModel::syncPoints),
+                        processingBets = betsState.processingBets,
                         onBack = {
                             betsViewModel.clearMessage()
                             backStack.removeLastOrNull()
