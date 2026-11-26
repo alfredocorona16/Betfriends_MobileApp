@@ -17,9 +17,23 @@ service cloud.firestore {
     match /usuarios/{userId} {
       allow read: if isOwner(userId);
 
-      // Los cambios de saldo y la creación del
-      // perfil requieren reglas más específicas.
-      allow create, update, delete: if false;
+      function validName(name) {
+        return name is string && name.size() <= 40 && name.matches('.*\\S.*');
+      }
+
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasAll(['nombre', 'correo', 'puntos', 'fechaCreacion'])
+        && request.resource.data.keys().hasOnly(['nombre', 'correo', 'puntos', 'fechaCreacion'])
+        && validName(request.resource.data.nombre)
+        && request.resource.data.correo is string
+        && request.resource.data.correo == request.auth.token.email
+        && request.resource.data.puntos is int
+        && request.resource.data.puntos == 0
+        && request.resource.data.fechaCreacion == request.time;
+
+      allow update: if isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nombre'])
+        && validName(request.resource.data.nombre);
     }
 
     // Búsqueda de perfiles públicos

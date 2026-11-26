@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.betfriends.app.domain.model.ProfileCompletionRequired
 import com.betfriends.app.domain.repository.AuthRepository
 
 class AuthViewModel(
@@ -51,10 +52,7 @@ class AuthViewModel(
                     )
                 },
                 onFailure = { error ->
-                    uiState = AuthUiState(
-                        errorMessage = error.message
-                            ?: "No fue posible iniciar sesión."
-                    )
+                    handleAuthFailure(error, "No fue posible iniciar sesión.")
                 }
             )
         }
@@ -68,10 +66,7 @@ class AuthViewModel(
         val normalizedName = nombre.trim()
         val normalizedEmail = correo.trim()
 
-        if (normalizedName.isBlank()) {
-            showError("Escribe tu nombre.")
-            return
-        }
+        if (!validateName(normalizedName)) return
 
         if (normalizedEmail.isBlank()) {
             showError("Escribe tu correo electrónico.")
@@ -105,11 +100,23 @@ class AuthViewModel(
                     )
                 },
                 onFailure = { error ->
-                    uiState = AuthUiState(
-                        errorMessage = error.message
-                            ?: "No fue posible crear la cuenta."
-                    )
+                    handleAuthFailure(error, "No fue posible crear la cuenta.")
                 }
+            )
+        }
+    }
+
+    fun completeProfile(nombre: String) {
+        val pending = uiState.pendingProfile ?: return
+        val name = nombre.trim()
+        if (uiState.isLoading || !validateName(name)) return
+
+        uiState = uiState.copy(isLoading = true, errorMessage = null)
+        authRepository.completeProfile(pending.uid, name) completed@{ result ->
+            if (uiState.pendingProfile?.uid != pending.uid) return@completed
+            result.fold(
+                onSuccess = { uiState = AuthUiState(user = it) },
+                onFailure = { handleAuthFailure(it, "No fue posible completar el perfil.") }
             )
         }
     }
@@ -120,18 +127,7 @@ class AuthViewModel(
     ) {
         val normalizedName = nombre.trim()
 
-        if (normalizedName.isBlank()) {
-            showError("Escribe tu nombre.")
-            return
-        }
-
-        if (normalizedName.length > MAXIMUM_NAME_LENGTH) {
-            showError(
-                "El nombre no puede tener más de " +
-                        "$MAXIMUM_NAME_LENGTH caracteres."
-            )
-            return
-        }
+        if (!validateName(normalizedName)) return
 
         if (normalizedName == uiState.user?.nombre) {
             onSuccess()
@@ -200,14 +196,30 @@ class AuthViewModel(
                     )
                 },
                 onFailure = { error ->
-                    authRepository.logout()
-
-                    uiState = AuthUiState(
-                        errorMessage = error.message
-                    )
+                    handleAuthFailure(error, "No fue posible consultar tu perfil.")
                 }
             )
         }
+    }
+
+    private fun handleAuthFailure(error: Throwable, fallback: String) {
+        uiState = if (error is ProfileCompletionRequired) {
+            AuthUiState(
+                pendingProfile = PendingProfile(error.uid, error.suggestedName),
+                errorMessage = if (error.cause == null) null else
+                    "Tu cuenta ya está creada. Revisa tu conexión y vuelve a guardar el perfil."
+            )
+        } else {
+            AuthUiState(errorMessage = error.message ?: fallback)
+        }
+    }
+
+    private fun validateName(name: String): Boolean {
+        if (name.isBlank() || name.length > MAXIMUM_NAME_LENGTH) {
+            showError("Escribe un nombre de 1 a $MAXIMUM_NAME_LENGTH caracteres.")
+            return false
+        }
+        return true
     }
 
     private fun showError(

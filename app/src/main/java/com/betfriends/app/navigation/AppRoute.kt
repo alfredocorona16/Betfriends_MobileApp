@@ -16,6 +16,9 @@ data object Login : AppRoute
 data object Register : AppRoute
 
 @Serializable
+data object CompleteProfile : AppRoute
+
+@Serializable
 data object Home : AppRoute
 
 @Serializable

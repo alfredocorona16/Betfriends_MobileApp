@@ -1,5 +1,6 @@
 package com.betfriends.app.data.auth
 
+import com.betfriends.app.domain.model.ProfileCompletionRequired
 import com.betfriends.app.domain.model.UserProfile
 import com.betfriends.app.domain.repository.AuthRepository
 import com.google.firebase.FirebaseNetworkException
@@ -8,6 +9,7 @@ import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 
@@ -79,46 +81,49 @@ class FirebaseAuthRepository(
                 return@addOnSuccessListener
             }
 
-            val userProfile = UserProfile(
-                uid = firebaseUser.uid,
-                nombre = nombre,
-                correo = correo,
-                puntos = INITIAL_POINTS
-            )
-
-            val userData = hashMapOf<String, Any>(
-                FIELD_NAME to userProfile.nombre,
-                FIELD_EMAIL to userProfile.correo,
-                FIELD_POINTS to userProfile.puntos,
-                FIELD_CREATED_AT to FieldValue.serverTimestamp()
-            )
-
-            firestore
-                .collection(USERS_COLLECTION)
-                .document(firebaseUser.uid)
-                .set(userData)
-                .addOnSuccessListener {
-                    onResult(
-                        Result.success(userProfile)
-                    )
-                }
-                .addOnFailureListener {
-                    auth.signOut()
-
-                    onResult(
-                        Result.failure(
-                            IllegalStateException(
-                                "La cuenta fue creada, pero no se pudo guardar el perfil."
-                            )
-                        )
-                    )
-                }
+            completeProfile(firebaseUser.uid, nombre, onResult)
         }.addOnFailureListener { error ->
             onResult(
                 Result.failure(
                     convertAuthError(error)
                 )
             )
+        }
+    }
+
+    override fun completeProfile(
+        uid: String,
+        nombre: String,
+        onResult: (Result<UserProfile>) -> Unit
+    ) {
+        val user = auth.currentUser
+        val email = user?.email
+        if (user == null || user.uid != uid || email.isNullOrBlank()) {
+            onResult(Result.failure(IllegalStateException("Inicia sesión de nuevo para continuar.")))
+            return
+        }
+
+        val name = nombre.trim()
+        val ref = firestore.collection(USERS_COLLECTION).document(uid)
+        firestore.runTransaction { transaction ->
+            val existing = transaction.get(ref)
+            if (existing.exists()) {
+                existing.toProfile(user)
+            } else {
+                val profile = UserProfile(uid = uid, nombre = name, correo = email, puntos = INITIAL_POINTS)
+                transaction.set(ref, mapOf(
+                    FIELD_NAME to profile.nombre,
+                    FIELD_EMAIL to profile.correo,
+                    FIELD_POINTS to profile.puntos,
+                    FIELD_CREATED_AT to FieldValue.serverTimestamp()
+                ))
+                profile
+            }
+        }.addOnSuccessListener { profile ->
+            onResult(Result.success(profile))
+        }.addOnFailureListener { error ->
+            // Una transacción puede fallar incluso si Auth ya confirmó el registro.
+            onResult(Result.failure(ProfileCompletionRequired(uid, name, error)))
         }
     }
 
@@ -197,46 +202,27 @@ class FirebaseAuthRepository(
             .get()
             .addOnSuccessListener { document ->
 
-                if (!document.exists()) {
-                    auth.signOut()
-
-                    onResult(
-                        Result.failure(
-                            IllegalStateException(
-                                "La cuenta existe, pero no tiene un perfil en Firestore."
-                            )
-                        )
-                    )
-                    return@addOnSuccessListener
+                if (document.exists()) {
+                    onResult(Result.success(document.toProfile(firebaseUser)))
+                } else if (document.metadata.isFromCache) {
+                    onResult(Result.failure(IllegalStateException("Conéctate para consultar tu perfil.")))
+                } else {
+                    onResult(Result.failure(ProfileCompletionRequired(firebaseUser.uid)))
                 }
-
-                val points = (
-                        document.get(FIELD_POINTS) as? Number
-                        )?.toInt() ?: 0
-
-                val userProfile = UserProfile(
-                    uid = firebaseUser.uid,
-                    nombre = document.getString(FIELD_NAME)
-                        ?: "Usuario",
-                    correo = document.getString(FIELD_EMAIL)
-                        ?: firebaseUser.email.orEmpty(),
-                    puntos = points
-                )
-
-                onResult(
-                    Result.success(userProfile)
-                )
             }
-            .addOnFailureListener {
-                onResult(
-                    Result.failure(
-                        IllegalStateException(
-                            "No fue posible consultar el perfil del usuario."
-                        )
-                    )
-                )
+            .addOnFailureListener { error ->
+                onResult(Result.failure(IllegalStateException(
+                    "No fue posible consultar el perfil. Revisa tu conexión e inténtalo de nuevo.", error
+                )))
             }
     }
+
+    private fun DocumentSnapshot.toProfile(user: FirebaseUser) = UserProfile(
+        uid = user.uid,
+        nombre = getString(FIELD_NAME) ?: "Usuario",
+        correo = getString(FIELD_EMAIL) ?: user.email.orEmpty(),
+        puntos = (get(FIELD_POINTS) as? Number)?.toInt() ?: INITIAL_POINTS
+    )
 
     private fun convertAuthError(
         error: Exception
@@ -247,7 +233,7 @@ class FirebaseAuthRepository(
             }
 
             is FirebaseAuthUserCollisionException -> {
-                "Ya existe una cuenta registrada con este correo."
+                "Este correo ya está registrado. Inicia sesión para continuar o completar tu perfil."
             }
 
             is FirebaseAuthWeakPasswordException -> {

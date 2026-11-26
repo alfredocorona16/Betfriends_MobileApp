@@ -15,6 +15,7 @@ import com.betfriends.app.data.auth.FirebaseAuthRepository
 import com.betfriends.app.data.bet.FirebaseBetRepository
 import com.betfriends.app.ui.auth.AuthViewModel
 import com.betfriends.app.ui.auth.AuthViewModelFactory
+import com.betfriends.app.ui.auth.CompleteProfileScreen
 import com.betfriends.app.ui.auth.LoginScreen
 import com.betfriends.app.ui.auth.RegisterScreen
 import com.betfriends.app.ui.auth.SplashScreen
@@ -75,6 +76,7 @@ fun BetFriendsApp() {
     LaunchedEffect(
         splashFinished,
         authState.isLoading,
+        authState.pendingProfile?.uid,
         authenticatedUser?.uid,
         currentRoute
     ) {
@@ -82,9 +84,15 @@ fun BetFriendsApp() {
             return@LaunchedEffect
         }
 
-        if (authenticatedUser != null) {
+        if (authState.pendingProfile != null) {
+            if (currentRoute != CompleteProfile) {
+                backStack.clear()
+                backStack.add(CompleteProfile)
+            }
+        } else if (authenticatedUser != null) {
             val isAuthenticationRoute =
                 currentRoute == Splash ||
+                        currentRoute == CompleteProfile ||
                         currentRoute == Login ||
                         currentRoute == Register
 
@@ -151,6 +159,18 @@ fun BetFriendsApp() {
                         backStack.removeLastOrNull()
                     }
                 )
+            }
+
+            entry<CompleteProfile> {
+                authState.pendingProfile?.let { pending ->
+                    CompleteProfileScreen(
+                        pending = pending,
+                        isSaving = authState.isLoading,
+                        error = authState.errorMessage,
+                        onSave = authViewModel::completeProfile,
+                        onLogout = authViewModel::logout
+                    )
+                }
             }
 
             entry<Home> {

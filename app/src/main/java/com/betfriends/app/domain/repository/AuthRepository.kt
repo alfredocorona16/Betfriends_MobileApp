@@ -19,6 +19,12 @@ interface AuthRepository {
         onResult: (Result<UserProfile>) -> Unit
     )
 
+    fun completeProfile(
+        uid: String,
+        nombre: String,
+        onResult: (Result<UserProfile>) -> Unit
+    )
+
     fun getCurrentUserProfile(
         onResult: (Result<UserProfile>) -> Unit
     )
