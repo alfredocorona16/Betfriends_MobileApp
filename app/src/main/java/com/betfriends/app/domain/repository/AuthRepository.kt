@@ -34,5 +34,7 @@ interface AuthRepository {
         onResult: (Result<UserProfile>) -> Unit
     )
 
+    fun requestPasswordReset(correo: String, onResult: (Result<Unit>) -> Unit)
+
     fun logout()
 }

@@ -131,6 +131,9 @@ fun BetFriendsApp() {
             entry<Login> {
                 LoginScreen(
                     uiState = authState,
+                    passwordReset = authViewModel.passwordReset,
+                    onRequestPasswordReset = authViewModel::requestPasswordReset,
+                    onClearPasswordReset = authViewModel::clearPasswordReset,
                     onLogin = { correo, password ->
                         authViewModel.login(
                             correo = correo,

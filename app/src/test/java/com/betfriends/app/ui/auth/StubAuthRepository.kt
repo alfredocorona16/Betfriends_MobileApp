@@ -10,6 +10,7 @@ internal open class StubAuthRepository : AuthRepository {
     override fun getCurrentUserProfile(onResult: (Result<UserProfile>) -> Unit): Unit = unexpected()
     override fun updateProfileName(nombre: String, onResult: (Result<UserProfile>) -> Unit): Unit = unexpected()
     override fun completeProfile(uid: String, nombre: String, onResult: (Result<UserProfile>) -> Unit): Unit = unexpected()
+    override fun requestPasswordReset(correo: String, onResult: (Result<Unit>) -> Unit): Unit = unexpected()
     override fun logout(): Unit = unexpected()
 
     protected fun unexpected(): Nothing = error("Llamada imprevista al repositorio de autenticación.")

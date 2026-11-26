@@ -3,6 +3,7 @@ package com.betfriends.app.ui.auth
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.util.PatternsCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.betfriends.app.domain.model.ProfileCompletionRequired
@@ -14,6 +15,28 @@ class AuthViewModel(
 
     var uiState by mutableStateOf(AuthUiState())
         private set
+
+    var passwordReset by mutableStateOf<PasswordResetState>(PasswordResetState.Idle)
+        private set
+
+    fun requestPasswordReset(correo: String) {
+        if (passwordReset == PasswordResetState.Sending) return
+        val email = correo.trim()
+        if (!PatternsCompat.EMAIL_ADDRESS.matcher(email).matches()) {
+            passwordReset = PasswordResetState.Error("Escribe un correo electrónico válido.")
+            return
+        }
+
+        passwordReset = PasswordResetState.Sending
+        authRepository.requestPasswordReset(email) { result ->
+            passwordReset = if (result.isSuccess) PasswordResetState.Sent else
+                PasswordResetState.Error("No se pudo procesar la solicitud. Revisa tu conexión y vuelve a intentarlo.")
+        }
+    }
+
+    fun clearPasswordReset() {
+        if (passwordReset != PasswordResetState.Sending) passwordReset = PasswordResetState.Idle
+    }
 
     init {
         restoreSession()

@@ -15,3 +15,10 @@ data class AuthUiState(
     val isAuthenticated: Boolean
         get() = user != null
 }
+
+sealed interface PasswordResetState {
+    data object Idle : PasswordResetState
+    data object Sending : PasswordResetState
+    data object Sent : PasswordResetState
+    data class Error(val message: String) : PasswordResetState
+}
