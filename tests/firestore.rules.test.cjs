@@ -124,3 +124,49 @@ test("Los participantes pueden consultar su apuesta", async () => {
     db.doc("apuestas/apuesta1").get()
   );
 });
+
+const { randomUUID } = require("node:crypto");
+const { serverTimestamp } = require("firebase/firestore");
+
+function newProfileFixture() {
+  const uid = randomUUID();
+  const email = uid + "@example.test";
+  const db = testEnv.authenticatedContext(uid, { email }).firestore();
+  return {
+    ref: db.doc("usuarios/" + uid),
+    data: { nombre: "Ana", correo: email, puntos: 0, fechaCreacion: serverTimestamp() }
+  };
+}
+
+test("El propietario puede crear su perfil y cambiar únicamente el nombre", async () => {
+  const { ref, data } = newProfileFixture();
+  await assertSucceeds(ref.set(data));
+  const created = (await ref.get()).data();
+  assert.equal(created.puntos, 0);
+  assert.ok(created.fechaCreacion);
+  await assertSucceeds(ref.update({ nombre: "Ana Pérez" }));
+  for (const change of [
+    { puntos: 1 }, { correo: "otro@example.test" }, { fechaCreacion: new Date(0) },
+    { rol: "admin" }, { nombre: "  " }
+  ]) {
+    await assertFails(ref.update(change));
+  }
+  await assertFails(ref.delete());
+});
+
+test("La creación exige el UID, el correo y los campos iniciales correctos", async () => {
+  const { ref, data } = newProfileFixture();
+  const other = testEnv.authenticatedContext(randomUUID(), { email: data.correo }).firestore();
+  await assertFails(other.doc(ref.path).set(data));
+  await assertFails(testEnv.unauthenticatedContext().firestore().doc(ref.path).set(data));
+  for (const change of [
+    { correo: "otro@example.test" }, { puntos: 1000 }, { puntos: "0" },
+    { fechaCreacion: new Date(0) }, { nombre: "  " }, { nombre: "a".repeat(41) }, { rol: "admin" }
+  ]) {
+    await assertFails(ref.set({ ...data, ...change }));
+  }
+  const { puntos, ...missingPoints } = data;
+  await assertFails(ref.set(missingPoints));
+  assert.equal((await ref.get()).exists, false);
+  await assertSucceeds(ref.set(data));
+});
