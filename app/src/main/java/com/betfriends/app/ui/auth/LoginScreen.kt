@@ -53,7 +53,10 @@ fun LoginScreen(
         correo: String,
         password: String
     ) -> Unit,
-    onRegisterClick: () -> Unit
+    onRegisterClick: () -> Unit,
+    passwordReset: PasswordResetState,
+    onRequestPasswordReset: (String) -> Unit,
+    onClearPasswordReset: () -> Unit
 ) {
     var correo by rememberSaveable {
         mutableStateOf("")
@@ -61,6 +64,20 @@ fun LoginScreen(
 
     var password by rememberSaveable {
         mutableStateOf("")
+    }
+
+    var resetOpen by rememberSaveable { mutableStateOf(false) }
+    if (resetOpen) {
+        PasswordResetDialog(
+            initialEmail = correo,
+            state = passwordReset,
+            onSend = onRequestPasswordReset,
+            onEdit = onClearPasswordReset,
+            onClose = {
+                resetOpen = false
+                onClearPasswordReset()
+            }
+        )
     }
 
     Surface(
@@ -227,6 +244,16 @@ fun LoginScreen(
                             }
 
                             TextButton(
+                                onClick = {
+                                    onClearPasswordReset()
+                                    resetOpen = true
+                                },
+                                enabled = !uiState.isLoading
+                            ) {
+                                Text("Olvidé mi contraseña")
+                            }
+
+                            TextButton(
                                 onClick = onRegisterClick,
                                 enabled = !uiState.isLoading
                             ) {
@@ -278,7 +305,10 @@ private fun LoginScreenPreview() {
         LoginScreen(
             uiState = AuthUiState(),
             onLogin = { _, _ -> },
-            onRegisterClick = {}
+            onRegisterClick = {},
+            passwordReset = PasswordResetState.Idle,
+            onRequestPasswordReset = {},
+            onClearPasswordReset = {}
         )
     }
 }

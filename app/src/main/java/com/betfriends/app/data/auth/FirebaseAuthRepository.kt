@@ -5,6 +5,7 @@ import com.betfriends.app.domain.model.UserProfile
 import com.betfriends.app.domain.repository.AuthRepository
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
@@ -188,6 +189,13 @@ class FirebaseAuthRepository(
             }
     }
 
+    override fun requestPasswordReset(correo: String, onResult: (Result<Unit>) -> Unit) {
+        auth.sendPasswordResetEmail(correo).addOnCompleteListener { task ->
+            val code = (task.exception as? FirebaseAuthException)?.errorCode
+            onResult(passwordResetResult(task.isSuccessful, code))
+        }
+    }
+
     override fun logout() {
         auth.signOut()
     }
@@ -266,3 +274,11 @@ class FirebaseAuthRepository(
         const val INITIAL_POINTS = 0
     }
 }
+
+/** Algunas configuraciones de Auth identifican explícitamente cuentas inexistentes o inhabilitadas. */
+internal fun passwordResetResult(success: Boolean, errorCode: String?): Result<Unit> =
+    when {
+        success || errorCode == "ERROR_USER_NOT_FOUND" || errorCode == "ERROR_USER_DISABLED" ->
+            Result.success(Unit)
+        else -> Result.failure(IllegalStateException("No se pudo procesar la solicitud. Vuelve a intentarlo."))
+    }
